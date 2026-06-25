@@ -67,10 +67,28 @@ async def _guardar_nombre(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     db.register_employee(update.effective_user.id, name)
     context.user_data[AWAITING_NAME] = False
     await update.message.reply_text(
-        f"Registrado como *{name}*\n\n"
-        "Ya podés registrar tu asistencia:\n"
-        "  /entro  o escribí \"llegué\"\n"
-        "  /salgo  o escribí \"me voy\"",
+        f"*Bienvenido/a, {name}!*\n"
+        f"Ya estás registrado en el sistema de asistencia.\n"
+        f"\n"
+        f"*Cómo usarlo:*\n"
+        f"\n"
+        f"Al llegar, escribí cualquiera de estas frases:\n"
+        f"  › llegué\n"
+        f"  › entro\n"
+        f"  › buenos días\n"
+        f"  › /entro\n"
+        f"\n"
+        f"Al irte, escribí cualquiera de estas:\n"
+        f"  › me voy\n"
+        f"  › salgo\n"
+        f"  › chau\n"
+        f"  › /salgo\n"
+        f"\n"
+        f"Para ver cómo vas hoy:\n"
+        f"  › /estado\n"
+        f"\n"
+        f"_Eso es todo. Sin formularios, sin papel._\n"
+        f"_Cualquier duda hablá con tu administrador._",
         parse_mode="Markdown",
     )
     return True
