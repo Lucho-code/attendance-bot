@@ -39,36 +39,25 @@ OFFICE_LON        = float(os.getenv("OFFICE_LON", "0") or "0")
 OFFICE_RADIUS_M   = float(os.getenv("OFFICE_RADIUS_METERS", "300") or "300")
 
 PALABRAS_ENTRADA = [
-    # comandos directos
-    "entro", "entré", "entre", "/entro",
-    # llegada
-    "llegué", "llegue", "ya llegué", "ya llegue", "llegamos",
-    "aca estoy", "acá estoy", "estoy", "presente",
-    # arranque
-    "arranqué", "arranque", "arranco", "empiezo", "empecé", "empece",
-    "inicio", "iniciando", "empezando",
-    # saludos de mañana
-    "buenos días", "buenos dias", "buen día", "buen dia",
-    "buenas", "buenas tardes", "buenas noches",
-    # check in
-    "check in", "checkin", "entrada",
+    "llegué", "llegue",
+    "presente",
+    "arranqué", "arranco", "arrancando",
+    "estoy",
+    "empecé", "empece",
+    "inicio",
+    "check in", "checkin",
+    "entrada",
+    "/entro", "entro",
 ]
 PALABRAS_SALIDA = [
-    # comandos directos
-    "salgo", "/salgo",
-    # irse
-    "me voy", "ya me voy", "me fui", "sali", "salí",
-    "me retiro", "me retiro ya",
-    # despedidas
-    "chau", "chao", "adios", "adiós",
-    "hasta mañana", "hasta manana", "hasta luego",
-    "hasta la vista", "nos vemos", "nos vemo",
-    # terminar jornada
-    "termino", "terminé", "termine", "terminamos",
-    "listo", "ya está", "ya esta", "fin", "finalizo",
-    "salida", "cerrando",
-    # check out
-    "check out", "checkout",
+    "me voy",
+    "salgo", "sali", "salí", "saliendo",
+    "listo",
+    "terminé", "termine",
+    "ya está", "ya esta",
+    "fin",
+    "checkout", "check out",
+    "/salgo",
 ]
 
 AWAITING_NAME = "awaiting_name"
@@ -553,13 +542,15 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(
             "No te entendí. Para registrar:\n"
             "\n"
-            "Entrada: escribí alguna de estas\n"
-            "  llegué · entro · presente · arranqué · buenas\n"
+            "Entrada — escribí alguna de estas:\n"
+            "  llegué · presente · arranqué · arranco\n"
+            "  arrancando · estoy · empecé · inicio\n"
+            "  check in · entrada · /entro\n"
             "\n"
-            "Salida: escribí alguna de estas\n"
-            "  me voy · salgo · chau · hasta mañana · listo\n"
-            "\n"
-            "O usá /entro y /salgo directamente."
+            "Salida — escribí alguna de estas:\n"
+            "  me voy · salgo · sali · saliendo\n"
+            "  listo · terminé · ya está · fin\n"
+            "  checkout · /salgo"
         )
 
 
