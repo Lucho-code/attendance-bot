@@ -39,6 +39,8 @@ PALABRAS_SALIDA = [
     "chau", "me retiro", "salida", "termino", "terminé",
 ]
 
+AWAITING_NAME = "awaiting_name"
+
 
 def ahora() -> datetime:
     return datetime.now(TIMEZONE)
@@ -48,33 +50,56 @@ def es_admin(user_id: int) -> bool:
     return user_id in ADMIN_IDS
 
 
-# ---------- handlers ----------
-
-async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user = update.effective_user
-    name = f"{user.first_name} {user.last_name or ''}".strip()
-    if context.args:
-        name = " ".join(context.args)
-
-    db.register_employee(user.id, name)
+async def _pedir_nombre(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Pide el nombre al usuario y activa el flag de espera."""
+    context.user_data[AWAITING_NAME] = True
     await update.message.reply_text(
-        f"Registrado como *{name}*\n\n"
-        "Comandos disponibles:\n"
-        "  /entro   - Registrar entrada\n"
-        "  /salgo   - Registrar salida\n"
-        "  /estado  - Ver tu estado hoy\n\n"
-        "También podés escribir frases como \"llegué\" o \"me voy\".",
-        parse_mode="Markdown",
+        "Hola! Para registrarte necesito tu nombre completo.\n"
+        "¿Cómo te llamás?"
     )
 
 
-async def _hacer_entro(update: Update):
+async def _guardar_nombre(update: Update, context: ContextTypes.DEFAULT_TYPE) -> bool:
+    """Si hay un nombre pendiente, lo guarda y devuelve True."""
+    if not context.user_data.get(AWAITING_NAME):
+        return False
+    name = update.message.text.strip()
+    db.register_employee(update.effective_user.id, name)
+    context.user_data[AWAITING_NAME] = False
+    await update.message.reply_text(
+        f"Registrado como *{name}*\n\n"
+        "Ya podés registrar tu asistencia:\n"
+        "  /entro  o escribí \"llegué\"\n"
+        "  /salgo  o escribí \"me voy\"",
+        parse_mode="Markdown",
+    )
+    return True
+
+
+# ---------- handlers ----------
+
+async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    employee = db.get_employee(update.effective_user.id)
+    if employee:
+        await update.message.reply_text(
+            f"Ya estás registrado como *{employee['name']}*\n\n"
+            "  /entro  - Registrar entrada\n"
+            "  /salgo  - Registrar salida\n"
+            "  /estado - Ver tu estado hoy",
+            parse_mode="Markdown",
+        )
+        return
+    await _pedir_nombre(update, context)
+
+
+async def _hacer_entro(update: Update, context: ContextTypes.DEFAULT_TYPE = None):
     user = update.effective_user
     employee = db.get_employee(user.id)
     if not employee:
-        await update.message.reply_text(
-            "No estás registrado. Enviá /start primero."
-        )
+        if context:
+            await _pedir_nombre(update, context)
+        else:
+            await update.message.reply_text("Primero registrate enviando /start")
         return
 
     ts = ahora()
@@ -97,13 +122,14 @@ async def _hacer_entro(update: Update):
     )
 
 
-async def _hacer_salgo(update: Update):
+async def _hacer_salgo(update: Update, context: ContextTypes.DEFAULT_TYPE = None):
     user = update.effective_user
     employee = db.get_employee(user.id)
     if not employee:
-        await update.message.reply_text(
-            "No estás registrado. Enviá /start primero."
-        )
+        if context:
+            await _pedir_nombre(update, context)
+        else:
+            await update.message.reply_text("Primero registrate enviando /start")
         return
 
     ts = ahora()
@@ -126,20 +152,18 @@ async def _hacer_salgo(update: Update):
 
 
 async def cmd_entro(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await _hacer_entro(update)
+    await _hacer_entro(update, context)
 
 
 async def cmd_salgo(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await _hacer_salgo(update)
+    await _hacer_salgo(update, context)
 
 
 async def cmd_estado(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     employee = db.get_employee(user.id)
     if not employee:
-        await update.message.reply_text(
-            "No estás registrado. Enviá /start primero."
-        )
+        await _pedir_nombre(update, context)
         return
 
     ts = ahora()
@@ -203,11 +227,21 @@ async def cmd_empleados(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    # Prioridad 1: si estamos esperando el nombre, guardarlo
+    if await _guardar_nombre(update, context):
+        return
+
+    # Prioridad 2: si no está registrado, pedirle el nombre
+    if not db.get_employee(update.effective_user.id):
+        await _pedir_nombre(update, context)
+        return
+
+    # Prioridad 3: detectar entrada/salida por palabras clave
     text = update.message.text.lower().strip()
     if any(p in text for p in PALABRAS_ENTRADA):
-        await _hacer_entro(update)
+        await _hacer_entro(update, context)
     elif any(p in text for p in PALABRAS_SALIDA):
-        await _hacer_salgo(update)
+        await _hacer_salgo(update, context)
     else:
         await update.message.reply_text(
             "No entendí. Comandos disponibles:\n"
