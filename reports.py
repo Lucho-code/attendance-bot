@@ -63,46 +63,71 @@ def _scheduled_hours(shift: tuple) -> float:
     return (sh * 60 + sm - eh * 60 - em) / 60
 
 
+GRACE_MINUTES = int(os.getenv("GRACE_MINUTES", "15"))
+
+
 def calcular_horas(entry_dt: datetime, exit_dt: datetime,
                    weekday: int, is_holiday: bool) -> tuple:
     """
     Devuelve (horas_normales, horas_extra_50, horas_extra_100).
 
-    Reglas:
+    Reglas de horas:
       Lun-Vie 07:00-16:00          → normales
       Lun-Vie fuera de ese rango   → extra 50%
       Sábado  07:00-11:00          → extra 50%
       Sábado  11:00+ / antes 07:00 → extra 100%
       Domingo / Feriado             → extra 100%
+
+    Tolerancia (GRACE_MINUTES, default 15 min):
+      Si la entrada cae dentro de los primeros GRACE minutos de una zona,
+      se ajusta al inicio de esa zona (no se cobra como extra).
+      Si la salida cae dentro de los últimos GRACE minutos de una zona,
+      se ajusta al fin de esa zona (se cuenta como jornada completa).
     """
     entry = entry_dt.replace(tzinfo=None)
     exit_ = exit_dt.replace(tzinfo=None)
+    grace = timedelta(minutes=GRACE_MINUTES)
+    base  = entry.replace(hour=0, minute=0, second=0, microsecond=0)
+
+    def _boundary(h: int, m: int) -> datetime:
+        return base.replace(hour=h, minute=m, second=0, microsecond=0)
+
+    def _snap(dt: datetime, h: int, m: int) -> datetime:
+        """Ajusta dt al límite h:m si cae dentro del margen de gracia."""
+        b = _boundary(h, m)
+        return b if abs(dt - b) <= grace else dt
+
+    # Feriado o Domingo: todo al 100%, sin tolerancia de zona
+    if is_holiday or weekday == 6:
+        total = (exit_ - entry).total_seconds() / 3600
+        return (0.0, 0.0, round(total, 2))
+
+    # Aplicar tolerancia según el día
+    if weekday == 5:    # Sábado: zona 07:00 y frontera 11:00
+        entry = _snap(entry, 7,  0)
+        exit_ = _snap(exit_,  7,  0)   # entrada tarde dentro de gracia → 07:00
+        exit_ = _snap(exit_,  11, 0)   # salida temprana dentro de gracia → 11:00
+    else:               # Lun-Vie: zona 07:00-16:00
+        entry = _snap(entry, 7,  0)    # entrada tarde ≤ gracia → 07:00
+        exit_ = _snap(exit_,  16, 0)   # salida temprana ≤ gracia → 16:00
 
     if exit_ <= entry:
         return (0.0, 0.0, 0.0)
 
     def _overlap(zone_h0: int, zone_m0: int, zone_h1: int, zone_m1: int) -> float:
-        base = entry.replace(hour=0, minute=0, second=0, microsecond=0)
-        zs   = base.replace(hour=zone_h0, minute=zone_m0)
-        ze   = base.replace(hour=zone_h1, minute=zone_m1)
-        s    = max(entry, zs)
-        e    = min(exit_,  ze)
+        zs = _boundary(zone_h0, zone_m0)
+        ze = _boundary(zone_h1, zone_m1)
+        s  = max(entry, zs)
+        e  = min(exit_,  ze)
         return max(0.0, (e - s).total_seconds() / 3600)
 
-    if is_holiday or weekday == 6:           # Feriado o Domingo → 100%
-        extra_100 = (exit_ - entry).total_seconds() / 3600
-        return (0.0, 0.0, round(extra_100, 2))
-
-    if weekday == 5:                          # Sábado
-        extra_50  = _overlap(7,  0, 11, 0)   # 07:00-11:00 → 50%
-        extra_100 = (_overlap(0,  0,  7, 0)  # antes 07:00 → 100%
-                   + _overlap(11, 0, 23, 59)) # después 11:00 → 100%
+    if weekday == 5:
+        extra_50  = _overlap(7,  0, 11, 0)
+        extra_100 = _overlap(0,  0,  7, 0) + _overlap(11, 0, 23, 59)
         return (0.0, round(extra_50, 2), round(extra_100, 2))
 
-    # Lunes a Viernes
-    normal   = _overlap(7,  0, 16, 0)        # 07:00-16:00 → normales
-    extra_50 = (_overlap(0,  0,  7, 0)       # antes 07:00 → 50%
-              + _overlap(16, 0, 23, 59))      # después 16:00 → 50%
+    normal   = _overlap(7,  0, 16, 0)
+    extra_50 = _overlap(0,  0,  7, 0) + _overlap(16, 0, 23, 59)
     return (round(normal, 2), round(extra_50, 2), 0.0)
 
 
