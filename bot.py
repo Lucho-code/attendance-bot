@@ -761,16 +761,39 @@ async def job_aviso_salida(context: CallbackContext):
 
 
 async def job_backup(context: CallbackContext):
-    """23:00 — copia la base de datos a la carpeta backups/, conserva los últimos 30."""
-    db_path    = os.getenv("DB_PATH", "attendance.db")
-    backup_dir = os.path.join(os.path.dirname(os.path.abspath(db_path)), "backups")
-    os.makedirs(backup_dir, exist_ok=True)
-    ts   = ahora().strftime("%Y%m%d_%H%M%S")
-    dest = os.path.join(backup_dir, f"attendance_{ts}.db")
-    shutil.copy2(db_path, dest)
-    archivos = sorted(f for f in os.listdir(backup_dir) if f.endswith(".db"))
-    for viejo in archivos[:-30]:
-        os.remove(os.path.join(backup_dir, viejo))
+    """23:00 — copia la DB a backups/ local Y a OneDrive/FichaYA (nube)."""
+    db_path = os.getenv("DB_PATH", "attendance.db")
+    ts      = ahora().strftime("%Y%m%d_%H%M%S")
+    nombre  = f"attendance_{ts}.db"
+
+    destinos = [
+        os.path.join(os.path.dirname(os.path.abspath(db_path)), "backups"),
+        os.path.join(os.path.expanduser("~"), "OneDrive", "FichaYA", "backups"),
+    ]
+
+    errores = []
+    for backup_dir in destinos:
+        try:
+            os.makedirs(backup_dir, exist_ok=True)
+            shutil.copy2(db_path, os.path.join(backup_dir, nombre))
+            archivos = sorted(f for f in os.listdir(backup_dir) if f.endswith(".db"))
+            for viejo in archivos[:-30]:
+                os.remove(os.path.join(backup_dir, viejo))
+        except Exception as e:
+            errores.append(f"{backup_dir}: {e}")
+
+    if errores:
+        for admin_id in ADMIN_IDS:
+            await context.bot.send_message(
+                chat_id=admin_id,
+                text=f"Backup parcial — error en destino:\n" + "\n".join(errores),
+            )
+    else:
+        for admin_id in ADMIN_IDS:
+            await context.bot.send_message(
+                chat_id=admin_id,
+                text=f"Backup OK — {nombre}\nGuardado en PC y OneDrive.",
+            )
 
 
 async def job_alive(context: CallbackContext):
