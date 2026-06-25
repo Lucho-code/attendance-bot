@@ -228,20 +228,21 @@ async def cmd_reporte(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
 
-    hoy     = ahora().date()
-    start   = hoy.replace(day=1)
-    titulo  = f"Reporte {MESES_ES[hoy.month]} {hoy.year}"
+    hoy    = ahora().date()
+    start  = date(hoy.year, 1, 1)            # 1 de enero
+    end    = date(hoy.year, 12, 31)          # 31 de diciembre
+    titulo = f"Reporte Anual {hoy.year}"
 
-    records  = db.get_records_by_period(start, hoy)
-    holidays = db.get_holidays(start, hoy)
-    absences = db.get_absences(start, hoy)
-    buffer   = _build_xlsx(records, titulo, start_date=start, end_date=hoy,
+    records  = db.get_records_by_period(start, end)
+    holidays = db.get_holidays(start, end)
+    absences = db.get_absences(start, end)
+    buffer   = _build_xlsx(records, titulo, start_date=start, end_date=end,
                            holidays=holidays, absences=absences)
-    filename = f"asistencia_{hoy.strftime('%Y%m%d_%H%M')}.xlsx"
+    filename = f"asistencia_{hoy.year}.xlsx"
     await update.message.reply_document(
         document=buffer,
         filename=filename,
-        caption=f"Reporte {titulo} — {start.strftime('%d/%m')} al {hoy.strftime('%d/%m')}",
+        caption=f"Reporte anual {hoy.year} — todos los días del año",
     )
 
     # También por email si está configurado
@@ -689,9 +690,10 @@ def _build_xlsx(records, titulo: str, start_date=None, end_date=None,
                         ws.cell(cur_row, col_hours, "Sin salida")
                         apply_row_color(ws, cur_row, "no_exit")
 
-                else:
+                elif current_day <= ahora().date():
                     ws.cell(cur_row, 3, "Ausente")
                     apply_row_color(ws, cur_row, "missing")
+                # días futuros: sin color, sin estado (pendiente)
 
                 cur_row += 1
                 current_day += timedelta(days=1)
@@ -752,8 +754,11 @@ def _build_xlsx(records, titulo: str, start_date=None, end_date=None,
         c = ws_res.cell(srow, 2, f"='{sname}'!{hcol_letter}{trow}")
         c.number_format = "0.00"; c.alignment = Alignment(horizontal="center")
 
-    grand_refs = ",".join([f"B{r}" for r in summary_refs.values()])
-    gc = ws_res.cell(grand_row, 2, f"=SUM({grand_refs})")
+    if summary_refs:
+        grand_refs = ",".join([f"B{r}" for r in summary_refs.values()])
+        gc = ws_res.cell(grand_row, 2, f"=SUM({grand_refs})")
+    else:
+        gc = ws_res.cell(grand_row, 2, 0)
     gc.number_format = "0.00"; gc.font = tot_font
     gc.fill = tot_fill; gc.alignment = Alignment(horizontal="center")
 
