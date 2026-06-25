@@ -1,18 +1,10 @@
-import os
+﻿import os
 import io
 import math
 import shutil
 import calendar
-import smtplib
 from datetime import datetime, date, timedelta, time as dt_time
 from itertools import groupby
-from email.mime.multipart import MIMEMultipart
-from email.mime.base import MIMEBase
-from email.mime.text import MIMEText
-from email import encoders
-
-import openpyxl
-from openpyxl.styles import Font, PatternFill, Alignment
 
 import pytz
 from dotenv import load_dotenv
@@ -27,6 +19,11 @@ from telegram.ext import (
 )
 
 from database import Database
+from reports  import (
+    build_xlsx, send_email,
+    MESES_ES, ABSENCE_TYPES, DIAS_ES,
+    _scheduled_hours,
+)
 
 load_dotenv()
 
@@ -54,15 +51,6 @@ PALABRAS_SALIDA = [
 
 AWAITING_NAME = "awaiting_name"
 
-DIAS_ES = ["Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado", "Domingo"]
-
-ABSENCE_TYPES = {
-    "vacacion": "Vacación", "vacación": "Vacación",
-    "enfermedad": "Enfermedad",
-    "licencia": "Licencia",
-    "justificada": "Justificada",
-    "injustificada": "Injustificada",
-}
 
 
 def ahora() -> datetime:
@@ -206,13 +194,18 @@ async def _hacer_salgo(update: Update, context: ContextTypes.DEFAULT_TYPE = None
         return
 
     horas = result["total_hours"]
-    await update.message.reply_text(
+    sched = _scheduled_hours(db.get_shift(user.id))
+    extra = max(0.0, round(horas - sched, 2))
+
+    msg = (
         f"*Salida registrada*\n"
-        f"Nombre:  {employee['name']}\n"
-        f"Hora:    {ts.strftime('%H:%M')}\n"
-        f"Trabajaste {horas:.1f} hs hoy.",
-        parse_mode="Markdown",
+        f"Nombre: {employee['name']}\n"
+        f"Hora:   {ts.strftime('%H:%M')}\n"
+        f"Trabajaste {horas:.1f} hs hoy."
     )
+    if extra > 0:
+        msg += f"\n*+{extra:.1f} hs extra* sobre turno de {sched:.0f} hs."
+    await update.message.reply_text(msg, parse_mode="Markdown")
 
 
 async def cmd_entro(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -759,318 +752,14 @@ async def job_alive(context: CallbackContext):
 
 # ---------- reporte quincena ----------
 
-MESES_ES = {
-    1: "Enero", 2: "Febrero", 3: "Marzo", 4: "Abril",
-    5: "Mayo", 6: "Junio", 7: "Julio", 8: "Agosto",
-    9: "Septiembre", 10: "Octubre", 11: "Noviembre", 12: "Diciembre",
-}
-
-
-def _sheet_name(name: str) -> str:
-    for ch in r"/\?*[]:":
-        name = name.replace(ch, "")
-    return name[:31]
-
-
-# Colores de fondo por estado del día
-_COLOR = {
-    "weekend":  "D9D9D9",  # gris
-    "holiday":  "FFE699",  # amarillo dorado
-    "vacacion": "BDD7EE",  # azul claro
-    "enfermedad": "C6EFCE", # verde claro
-    "licencia": "FCE4D6",  # naranja claro
-    "justificada": "E2EFDA",
-    "injustificada": "FFC7CE", # rojo claro
-    "no_exit":  "FFEB9C",  # amarillo advertencia
-    "missing":  "FFC7CE",  # rojo claro
-}
-
-
-def _row_fill(color_key: str):
-    return PatternFill("solid", fgColor=_COLOR.get(color_key, "FFFFFF"))
-
 
 def _build_xlsx(records, titulo: str, start_date=None, end_date=None,
                 holidays: dict = None, absences: dict = None) -> io.BytesIO:
-
-    holidays  = holidays  or {}
-    absences  = absences  or {}
-    cal_mode  = start_date is not None and end_date is not None
-
-    # Columnas: con calendario incluye Día y Estado
-    if cal_mode:
-        headers   = ["Fecha", "Día", "Estado", "Entrada", "Salida", "Horas Trabajadas"]
-        col_entry = 4; col_exit = 5; col_hours = 6; ncols = 6
-    else:
-        headers   = ["Fecha", "Día", "Entrada", "Salida", "Horas Trabajadas"]
-        col_entry = 3; col_exit = 4; col_hours = 5; ncols = 5
-
-    # Estilos base
-    hdr_fill  = PatternFill("solid", fgColor="1F4E79")
-    hdr_font  = Font(bold=True, color="FFFFFF")
-    tot_fill  = PatternFill("solid", fgColor="1F4E79")
-    tot_font  = Font(bold=True, color="FFFFFF")
-    name_fill = PatternFill("solid", fgColor="2E75B6")
-    name_font = Font(bold=True, color="FFFFFF", size=12)
-
-    def style_header(ws, row):
-        for col in range(1, ncols + 1):
-            c = ws.cell(row=row, column=col)
-            c.fill = hdr_fill; c.font = hdr_font
-            c.alignment = Alignment(horizontal="center")
-
-    def style_total(ws, row):
-        for col in range(1, ncols + 1):
-            c = ws.cell(row=row, column=col)
-            c.fill = tot_fill; c.font = tot_font
-
-    def apply_row_color(ws, row, color_key):
-        fill = _row_fill(color_key)
-        for col in range(1, ncols + 1):
-            ws.cell(row=row, column=col).fill = fill
-
-    wb = openpyxl.Workbook()
-
-    # ── Hoja Resumen ─────────────────────────────────────────────────────────
-    ws_res = wb.active
-    ws_res.title = "Resumen"
-    ws_res.merge_cells(f"A1:B1")
-    t = ws_res.cell(row=1, column=1, value=titulo)
-    t.font = Font(bold=True, size=13); t.alignment = Alignment(horizontal="center")
-
-    for col, h in enumerate(["Empleado", "Total Horas"], start=1):
-        c = ws_res.cell(row=2, column=col, value=h)
-        c.fill = hdr_fill; c.font = hdr_font; c.alignment = Alignment(horizontal="center")
-
-    ws_res.column_dimensions["A"].width = 26
-    ws_res.column_dimensions["B"].width = 16
-
-    records_sorted = sorted(records, key=lambda r: (r["name"], r["date"]))
-    grouped = {name: list(g) for name, g in groupby(records_sorted, key=lambda r: r["name"])}
-
-    # También incluir empleados que solo tienen ausencias (sin registros)
-    if cal_mode:
-        all_employees = {e["name"]: e["telegram_id"] for e in db.list_employees()}
-        for name in all_employees:
-            if name not in grouped:
-                grouped[name] = []
-
-    summary_row  = 3
-    summary_refs = {}
-    detail_total = {}
-
-    for name in sorted(grouped.keys()):
-        ws_res.cell(row=summary_row, column=1, value=name)
-        summary_refs[name] = summary_row
-        summary_row += 1
-
-    grand_row = summary_row
-    style_total(ws_res, grand_row)
-    for col in range(1, 3):
-        ws_res.cell(row=grand_row, column=col).fill = tot_fill
-    ws_res.cell(row=grand_row, column=1, value="TOTAL GENERAL").font = tot_font
-    ws_res.cell(row=grand_row, column=1).fill = tot_fill
-
-    # ── Leyenda de colores en Resumen ────────────────────────────────────────
-    leg_row = grand_row + 2
-    ws_res.cell(row=leg_row, column=1, value="Leyenda:").font = Font(bold=True)
-    leyenda = [
-        ("Fin de semana", "weekend"), ("Feriado", "holiday"),
-        ("Vacación", "vacacion"), ("Enfermedad", "enfermedad"),
-        ("Licencia", "licencia"), ("Sin salida", "no_exit"),
-        ("Ausente", "missing"),
-    ]
-    for i, (label, key) in enumerate(leyenda):
-        r = leg_row + 1 + i
-        ws_res.cell(row=r, column=1, value=label).fill = _row_fill(key)
-        ws_res.cell(row=r, column=1).alignment = Alignment(horizontal="left")
-
-    # ── Una hoja por empleado ─────────────────────────────────────────────────
-    for name, emp_records in sorted(grouped.items()):
-        sname = _sheet_name(name)
-        ws = wb.create_sheet(title=sname)
-
-        # Índice de registros por fecha para acceso O(1)
-        by_date = {r["date"]: r for r in emp_records}
-
-        # Ausencias de este empleado
-        emp_tid  = None
-        emp_list = db.find_employee_by_name(name)
-        if emp_list:
-            emp_tid = emp_list[0]["telegram_id"]
-        emp_absences = absences.get(emp_tid, {}) if emp_tid else {}
-
-        # Fila 1: título con nombre
-        ws.merge_cells(f"A1:{chr(64+ncols)}1")
-        nc = ws.cell(row=1, column=1, value=name)
-        nc.fill = name_fill; nc.font = name_font
-        nc.alignment = Alignment(horizontal="center")
-
-        # Fila 2: encabezados
-        for col, h in enumerate(headers, start=1):
-            ws.cell(row=2, column=col, value=h)
-        style_header(ws, 2)
-
-        data_start = 3
-        cur_row = data_start
-
-        if cal_mode:
-            # ── Modo calendario: todos los días del período ───────────────
-            from datetime import timedelta
-            current_day = start_date
-            while current_day <= end_date:
-                d_str    = current_day.isoformat()
-                weekday  = current_day.weekday()
-                day_name = DIAS_ES[weekday]
-                is_we    = weekday >= 5
-                holiday  = holidays.get(d_str)
-                absence  = emp_absences.get(d_str)
-                record   = by_date.get(d_str)
-
-                ws.cell(cur_row, 1, current_day.strftime("%d/%m/%Y"))
-                ws.cell(cur_row, 2, day_name)
-
-                if is_we:
-                    ws.cell(cur_row, 3, "Fin de semana")
-                    apply_row_color(ws, cur_row, "weekend")
-
-                elif holiday:
-                    ws.cell(cur_row, 3, f"Feriado: {holiday}")
-                    apply_row_color(ws, cur_row, "holiday")
-
-                elif absence:
-                    label = ABSENCE_TYPES.get(absence, absence.capitalize())
-                    ws.cell(cur_row, 3, label)
-                    apply_row_color(ws, cur_row, absence)
-
-                elif record:
-                    if record["entry_time"] and record["exit_time"]:
-                        ws.cell(cur_row, 3, "Trabajó")
-                        c = ws.cell(cur_row, col_entry, record["entry_time"].replace(tzinfo=None).time())
-                        c.number_format = "HH:MM"
-                        c = ws.cell(cur_row, col_exit, record["exit_time"].replace(tzinfo=None).time())
-                        c.number_format = "HH:MM"
-                        c = ws.cell(cur_row, col_hours,
-                                    f"=(E{cur_row}-D{cur_row})*24")
-                        c.number_format = "0.00"
-                        c.alignment = Alignment(horizontal="center")
-                    else:
-                        ws.cell(cur_row, 3, "Sin salida")
-                        c = ws.cell(cur_row, col_entry, record["entry_time"].replace(tzinfo=None).time())
-                        c.number_format = "HH:MM"
-                        ws.cell(cur_row, col_hours, "Sin salida")
-                        apply_row_color(ws, cur_row, "no_exit")
-
-                elif current_day <= ahora().date():
-                    ws.cell(cur_row, 3, "Ausente")
-                    apply_row_color(ws, cur_row, "missing")
-                # días futuros: sin color, sin estado (pendiente)
-
-                cur_row += 1
-                current_day += timedelta(days=1)
-
-        else:
-            # ── Modo simple: solo los registros existentes ────────────────
-            for r in emp_records:
-                d = date.fromisoformat(r["date"])
-                ws.cell(cur_row, 1, r["date"])
-                ws.cell(cur_row, 2, DIAS_ES[d.weekday()])
-                if r["entry_time"]:
-                    c = ws.cell(cur_row, col_entry, r["entry_time"].replace(tzinfo=None).time())
-                    c.number_format = "HH:MM"
-                if r["exit_time"]:
-                    c = ws.cell(cur_row, col_exit, r["exit_time"].replace(tzinfo=None).time())
-                    c.number_format = "HH:MM"
-                    c = ws.cell(cur_row, col_hours,
-                                f"=(D{cur_row}-C{cur_row})*24")
-                    c.number_format = "0.00"
-                    c.alignment = Alignment(horizontal="center")
-                else:
-                    ws.cell(cur_row, col_hours, "Sin salida")
-                    apply_row_color(ws, cur_row, "no_exit")
-                cur_row += 1
-
-        data_end  = cur_row - 1
-        total_row = cur_row
-
-        style_total(ws, total_row)
-        lc = ws.cell(total_row, ncols - 1, "TOTAL")
-        lc.font = tot_font; lc.fill = tot_fill
-        lc.alignment = Alignment(horizontal="right")
-        hcol_letter = chr(64 + col_hours)
-        tc = ws.cell(total_row, col_hours,
-                     f'=SUMIF({hcol_letter}{data_start}:{hcol_letter}{data_end},'
-                     f'"<>Sin salida",{hcol_letter}{data_start}:{hcol_letter}{data_end})')
-        tc.number_format = "0.00"; tc.font = tot_font
-        tc.fill = tot_fill; tc.alignment = Alignment(horizontal="center")
-
-        detail_total[name] = (sname, total_row, col_hours)
-
-        ws.column_dimensions["A"].width = 14
-        ws.column_dimensions["B"].width = 12
-        if cal_mode:
-            ws.column_dimensions["C"].width = 20
-            ws.column_dimensions["D"].width = 10
-            ws.column_dimensions["E"].width = 10
-            ws.column_dimensions["F"].width = 18
-        else:
-            ws.column_dimensions["C"].width = 10
-            ws.column_dimensions["D"].width = 10
-            ws.column_dimensions["E"].width = 18
-
-    # ── Completar Resumen con referencias a hojas ─────────────────────────────
-    for name, srow in summary_refs.items():
-        sname, trow, hcol = detail_total[name]
-        hcol_letter = chr(64 + hcol)
-        c = ws_res.cell(srow, 2, f"='{sname}'!{hcol_letter}{trow}")
-        c.number_format = "0.00"; c.alignment = Alignment(horizontal="center")
-
-    if summary_refs:
-        grand_refs = ",".join([f"B{r}" for r in summary_refs.values()])
-        gc = ws_res.cell(grand_row, 2, f"=SUM({grand_refs})")
-    else:
-        gc = ws_res.cell(grand_row, 2, 0)
-    gc.number_format = "0.00"; gc.font = tot_font
-    gc.fill = tot_fill; gc.alignment = Alignment(horizontal="center")
-
-    buffer = io.BytesIO()
-    wb.save(buffer)
-    buffer.seek(0)
-    return buffer
+    return build_xlsx(db, records, titulo, start_date, end_date, holidays, absences)
 
 
-def _enviar_email(buffer: io.BytesIO, filename: str, subject: str) -> bool:
-    """Envía el XLSX por Gmail. Devuelve True si tuvo éxito."""
-    email_from = os.getenv("EMAIL_FROM")
-    email_pass = os.getenv("EMAIL_PASSWORD")
-    email_to   = os.getenv("EMAIL_TO")
 
-    if not all([email_from, email_pass, email_to]):
-        return False  # Email no configurado, se omite silenciosamente
-
-    msg = MIMEMultipart()
-    msg["From"]    = email_from
-    msg["To"]      = email_to
-    msg["Subject"] = subject
-
-    msg.attach(MIMEText(
-        f"Adjunto el reporte de asistencia: {filename}\n\n"
-        f"Enviado automáticamente por el sistema de asistencia.",
-        "plain", "utf-8"
-    ))
-
-    part = MIMEBase("application", "octet-stream")
-    part.set_payload(buffer.read())
-    encoders.encode_base64(part)
-    part.add_header("Content-Disposition", f'attachment; filename="{filename}"')
-    msg.attach(part)
-
-    with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
-        server.login(email_from, email_pass)
-        server.sendmail(email_from, email_to.split(","), msg.as_string())
-
-    return True
-
+def _enviar_email(buf, fn, subj): return send_email(buf, fn, subj)
 
 async def job_quincena(context: CallbackContext):
     hoy = ahora().date()
