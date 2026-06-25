@@ -199,9 +199,17 @@ async def _hacer_salgo(update: Update, context: ContextTypes.DEFAULT_TYPE = None
     result = db.register_exit(user.id, ts)
 
     if result is None:
-        await update.message.reply_text(
-            "No tenés entrada registrada hoy. Usá /entro primero."
-        )
+        status = db.get_today_status(user.id, ts.date())
+        if status and status.get("exit_time"):
+            await update.message.reply_text(
+                f"Ya registraste tu salida hoy a las "
+                f"{status['exit_time'].strftime('%H:%M')}.\n"
+                f"Si necesitás corregirlo avisale al administrador."
+            )
+        else:
+            await update.message.reply_text(
+                "No tenés entrada registrada hoy. Escribí \"llegué\" o /entro primero."
+            )
         return
 
     # Obtener registro completo para calcular horas por franja
