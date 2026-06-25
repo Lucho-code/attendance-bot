@@ -1,8 +1,13 @@
 import os
 import io
 import calendar
+import smtplib
 from datetime import datetime, time as dt_time
 from itertools import groupby
+from email.mime.multipart import MIMEMultipart
+from email.mime.base import MIMEBase
+from email.mime.text import MIMEText
+from email import encoders
 
 import openpyxl
 from openpyxl.styles import Font, PatternFill, Alignment
@@ -223,6 +228,12 @@ async def cmd_reporte(update: Update, context: ContextTypes.DEFAULT_TYPE):
         caption=f"Reporte de asistencia - {len(records)} registros",
     )
 
+    # También por email si está configurado
+    buffer.seek(0)
+    email_to = os.getenv("EMAIL_TO", "")
+    if _enviar_email(buffer, filename, f"Asistencia - Reporte {ahora().strftime('%d/%m/%Y')}"):
+        await update.message.reply_text(f"Reporte también enviado a {email_to}")
+
 
 async def cmd_empleados(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
@@ -429,6 +440,39 @@ def _build_xlsx(records, titulo: str) -> io.BytesIO:
     return buffer
 
 
+def _enviar_email(buffer: io.BytesIO, filename: str, subject: str) -> bool:
+    """Envía el XLSX por Gmail. Devuelve True si tuvo éxito."""
+    email_from = os.getenv("EMAIL_FROM")
+    email_pass = os.getenv("EMAIL_PASSWORD")
+    email_to   = os.getenv("EMAIL_TO")
+
+    if not all([email_from, email_pass, email_to]):
+        return False  # Email no configurado, se omite silenciosamente
+
+    msg = MIMEMultipart()
+    msg["From"]    = email_from
+    msg["To"]      = email_to
+    msg["Subject"] = subject
+
+    msg.attach(MIMEText(
+        f"Adjunto el reporte de asistencia: {filename}\n\n"
+        f"Enviado automáticamente por el sistema de asistencia.",
+        "plain", "utf-8"
+    ))
+
+    part = MIMEBase("application", "octet-stream")
+    part.set_payload(buffer.read())
+    encoders.encode_base64(part)
+    part.add_header("Content-Disposition", f'attachment; filename="{filename}"')
+    msg.attach(part)
+
+    with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
+        server.login(email_from, email_pass)
+        server.sendmail(email_from, email_to.split(","), msg.as_string())
+
+    return True
+
+
 async def job_quincena(context: CallbackContext):
     hoy = ahora().date()
     ultimo_dia = calendar.monthrange(hoy.year, hoy.month)[1]
@@ -450,6 +494,7 @@ async def job_quincena(context: CallbackContext):
     records = db.get_records_by_period(start, end)
     buffer = _build_xlsx(records, label)
 
+    # Enviar por Telegram a todos los admins
     for admin_id in ADMIN_IDS:
         await context.bot.send_document(
             chat_id=admin_id,
@@ -458,6 +503,16 @@ async def job_quincena(context: CallbackContext):
             caption=f"Reporte automático - {label}\n{len(records)} registros",
         )
         buffer.seek(0)
+
+    # Enviar por email si está configurado
+    buffer.seek(0)
+    enviado = _enviar_email(buffer, filename, f"Asistencia - {label}")
+    if enviado:
+        for admin_id in ADMIN_IDS:
+            await context.bot.send_message(
+                chat_id=admin_id,
+                text=f"Reporte también enviado a {os.getenv('EMAIL_TO')}",
+            )
 
 
 # ---------- main ----------
