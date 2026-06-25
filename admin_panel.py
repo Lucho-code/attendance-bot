@@ -12,7 +12,7 @@ load_dotenv(os.path.join(os.path.dirname(__file__), ".env"))
 sys.path.insert(0, os.path.dirname(__file__))
 
 from database import Database
-from reports  import build_xlsx, MESES_ES, ABSENCE_TYPES
+from reports  import build_xlsx, MESES_ES, ABSENCE_TYPES, calcular_horas
 
 TIMEZONE = pytz.timezone("America/Argentina/Buenos_Aires")
 
@@ -65,15 +65,25 @@ with tab_hoy:
 
         ent = st_hoy["entry_time"].strftime("%H:%M") if st_hoy and st_hoy.get("entry_time") else "–"
         sal = st_hoy["exit_time"].strftime("%H:%M")  if st_hoy and st_hoy.get("exit_time")  else "–"
-        hs  = f"{st_hoy['total_hours']:.1f} hs"     if st_hoy and st_hoy.get("total_hours") else "–"
+        hs  = f"{st_hoy['total_hours']:.2f}"         if st_hoy and st_hoy.get("total_hours") else "–"
+
+        e50 = e100 = "–"
+        if st_hoy and st_hoy.get("entry_time") and st_hoy.get("exit_time"):
+            is_holiday = bool(db.is_holiday(hoy))
+            n, ex50, ex100 = calcular_horas(
+                st_hoy["entry_time"], st_hoy["exit_time"], hoy.weekday(), is_holiday)
+            e50  = f"{ex50:.2f}"  if ex50  > 0 else "–"
+            e100 = f"{ex100:.2f}" if ex100 > 0 else "–"
 
         rows.append({
-            "Empleado": emp["name"],
-            "Turno":    turno,
-            "Estado":   estado,
-            "Entrada":  ent,
-            "Salida":   sal,
-            "Horas":    hs,
+            "Empleado":     emp["name"],
+            "Turno":        turno,
+            "Estado":       estado,
+            "Entrada":      ent,
+            "Salida":       sal,
+            "Hs. Normales": hs,
+            "Extra 50%":    e50,
+            "Extra 100%":   e100,
         })
 
     c1, c2, c3, c4 = st.columns(4)
