@@ -228,14 +228,20 @@ async def cmd_reporte(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
 
-    records = db.get_all_records()
+    hoy     = ahora().date()
+    start   = hoy.replace(day=1)
+    titulo  = f"Reporte {MESES_ES[hoy.month]} {hoy.year}"
 
-    buffer = _build_xlsx(records, "Reporte completo")
-    filename = f"asistencia_{ahora().strftime('%Y%m%d_%H%M')}.xlsx"
+    records  = db.get_records_by_period(start, hoy)
+    holidays = db.get_holidays(start, hoy)
+    absences = db.get_absences(start, hoy)
+    buffer   = _build_xlsx(records, titulo, start_date=start, end_date=hoy,
+                           holidays=holidays, absences=absences)
+    filename = f"asistencia_{hoy.strftime('%Y%m%d_%H%M')}.xlsx"
     await update.message.reply_document(
         document=buffer,
         filename=filename,
-        caption=f"Reporte de asistencia - {len(records)} registros",
+        caption=f"Reporte {titulo} — {start.strftime('%d/%m')} al {hoy.strftime('%d/%m')}",
     )
 
     # También por email si está configurado
