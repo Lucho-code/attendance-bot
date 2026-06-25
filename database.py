@@ -116,6 +116,24 @@ class Database:
             r["exit_time"] = TIMEZONE.localize(dt) if dt.tzinfo is None else dt.astimezone(TIMEZONE)
         return r
 
+    def get_records_by_period(self, start: date, end: date):
+        rows = self.conn.execute("""
+            SELECT e.name, a.date, a.entry_time, a.exit_time, a.total_hours
+            FROM attendance a
+            JOIN employees e ON a.telegram_id = e.telegram_id
+            WHERE a.date BETWEEN ? AND ?
+            ORDER BY a.date ASC, e.name ASC
+        """, (start.isoformat(), end.isoformat())).fetchall()
+        result = []
+        for row in rows:
+            r = dict(row)
+            for field in ("entry_time", "exit_time"):
+                if r[field]:
+                    dt = datetime.fromisoformat(r[field])
+                    r[field] = TIMEZONE.localize(dt) if dt.tzinfo is None else dt.astimezone(TIMEZONE)
+            result.append(r)
+        return result
+
     def get_all_records(self):
         rows = self.conn.execute("""
             SELECT e.name, a.date, a.entry_time, a.exit_time, a.total_hours

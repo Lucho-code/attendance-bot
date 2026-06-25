@@ -1,6 +1,7 @@
 import os
 import io
-from datetime import datetime
+import calendar
+from datetime import datetime, time as dt_time
 
 import openpyxl
 from openpyxl.styles import Font, PatternFill, Alignment
@@ -14,6 +15,7 @@ from telegram.ext import (
     MessageHandler,
     filters,
     ContextTypes,
+    CallbackContext,
 )
 
 from database import Database
@@ -170,56 +172,7 @@ async def cmd_reporte(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     records = db.get_all_records()
 
-    wb = openpyxl.Workbook()
-    ws = wb.active
-    ws.title = "Asistencia"
-
-    # Encabezados con formato
-    headers = ["Nombre", "Fecha", "Entrada", "Salida", "Horas Trabajadas"]
-    ws.append(headers)
-    header_fill = PatternFill("solid", fgColor="1F4E79")
-    header_font = Font(bold=True, color="FFFFFF")
-    for col, _ in enumerate(headers, start=1):
-        cell = ws.cell(row=1, column=col)
-        cell.fill = header_fill
-        cell.font = header_font
-        cell.alignment = Alignment(horizontal="center")
-
-    # Filas de datos
-    for i, r in enumerate(records, start=2):
-        ws.cell(row=i, column=1, value=r["name"])
-        ws.cell(row=i, column=2, value=r["date"])
-
-        # Columna C: Entrada como valor de hora real
-        if r["entry_time"]:
-            cell_c = ws.cell(row=i, column=3, value=r["entry_time"].replace(tzinfo=None).time())
-            cell_c.number_format = "HH:MM"
-        else:
-            ws.cell(row=i, column=3, value="")
-
-        # Columna D: Salida como valor de hora real
-        if r["exit_time"]:
-            cell_d = ws.cell(row=i, column=4, value=r["exit_time"].replace(tzinfo=None).time())
-            cell_d.number_format = "HH:MM"
-        else:
-            ws.cell(row=i, column=4, value="Sin salida")
-
-        # Columna E: Fórmula automática de horas
-        cell_e = ws.cell(row=i, column=5, value=f'=IF(D{i}="Sin salida","Sin salida",(D{i}-C{i})*24)')
-        cell_e.number_format = "0.00"
-        cell_e.alignment = Alignment(horizontal="center")
-
-    # Ancho de columnas
-    ws.column_dimensions["A"].width = 22
-    ws.column_dimensions["B"].width = 14
-    ws.column_dimensions["C"].width = 10
-    ws.column_dimensions["D"].width = 10
-    ws.column_dimensions["E"].width = 18
-
-    buffer = io.BytesIO()
-    wb.save(buffer)
-    buffer.seek(0)
-
+    buffer = _build_xlsx(records, "Reporte completo")
     filename = f"asistencia_{ahora().strftime('%Y%m%d_%H%M')}.xlsx"
     await update.message.reply_document(
         document=buffer,
@@ -263,6 +216,90 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
 
 
+# ---------- reporte quincena ----------
+
+MESES_ES = {
+    1: "Enero", 2: "Febrero", 3: "Marzo", 4: "Abril",
+    5: "Mayo", 6: "Junio", 7: "Julio", 8: "Agosto",
+    9: "Septiembre", 10: "Octubre", 11: "Noviembre", 12: "Diciembre",
+}
+
+
+def _build_xlsx(records, titulo: str) -> io.BytesIO:
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "Asistencia"
+
+    headers = ["Nombre", "Fecha", "Entrada", "Salida", "Horas Trabajadas"]
+    ws.append(headers)
+    header_fill = PatternFill("solid", fgColor="1F4E79")
+    header_font = Font(bold=True, color="FFFFFF")
+    for col, _ in enumerate(headers, start=1):
+        cell = ws.cell(row=1, column=col)
+        cell.fill = header_fill
+        cell.font = header_font
+        cell.alignment = Alignment(horizontal="center")
+
+    for i, r in enumerate(records, start=2):
+        ws.cell(row=i, column=1, value=r["name"])
+        ws.cell(row=i, column=2, value=r["date"])
+        if r["entry_time"]:
+            c = ws.cell(row=i, column=3, value=r["entry_time"].replace(tzinfo=None).time())
+            c.number_format = "HH:MM"
+        else:
+            ws.cell(row=i, column=3, value="")
+        if r["exit_time"]:
+            c = ws.cell(row=i, column=4, value=r["exit_time"].replace(tzinfo=None).time())
+            c.number_format = "HH:MM"
+        else:
+            ws.cell(row=i, column=4, value="Sin salida")
+        c = ws.cell(row=i, column=5, value=f'=IF(D{i}="Sin salida","Sin salida",(D{i}-C{i})*24)')
+        c.number_format = "0.00"
+        c.alignment = Alignment(horizontal="center")
+
+    ws.column_dimensions["A"].width = 22
+    ws.column_dimensions["B"].width = 14
+    ws.column_dimensions["C"].width = 10
+    ws.column_dimensions["D"].width = 10
+    ws.column_dimensions["E"].width = 18
+
+    buffer = io.BytesIO()
+    wb.save(buffer)
+    buffer.seek(0)
+    return buffer
+
+
+async def job_quincena(context: CallbackContext):
+    hoy = ahora().date()
+    ultimo_dia = calendar.monthrange(hoy.year, hoy.month)[1]
+    mes = MESES_ES[hoy.month]
+
+    if hoy.day == 15:
+        start = hoy.replace(day=1)
+        end = hoy
+        label = f"1ra quincena {mes} {hoy.year} (1-15)"
+        filename = f"asistencia_{hoy.year}{hoy.month:02d}_q1.xlsx"
+    elif hoy.day == ultimo_dia:
+        start = hoy.replace(day=16)
+        end = hoy
+        label = f"2da quincena {mes} {hoy.year} (16-{ultimo_dia})"
+        filename = f"asistencia_{hoy.year}{hoy.month:02d}_q2.xlsx"
+    else:
+        return
+
+    records = db.get_records_by_period(start, end)
+    buffer = _build_xlsx(records, label)
+
+    for admin_id in ADMIN_IDS:
+        await context.bot.send_document(
+            chat_id=admin_id,
+            document=buffer,
+            filename=filename,
+            caption=f"Reporte automático - {label}\n{len(records)} registros",
+        )
+        buffer.seek(0)
+
+
 # ---------- main ----------
 
 def main():
@@ -283,6 +320,12 @@ def main():
     app.add_handler(CommandHandler("reporte", cmd_reporte))
     app.add_handler(CommandHandler("empleados", cmd_empleados))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text))
+
+    # Reporte automático de quincena: todos los días a las 18:00 (verifica si es día 15 o último del mes)
+    app.job_queue.run_daily(
+        job_quincena,
+        time=dt_time(hour=18, minute=0, tzinfo=TIMEZONE),
+    )
 
     print("Bot iniciado. Esperando mensajes...")
     app.run_polling(drop_pending_updates=True)
