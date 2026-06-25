@@ -2,7 +2,7 @@ import os
 import io
 import calendar
 import smtplib
-from datetime import datetime, time as dt_time
+from datetime import datetime, date, time as dt_time
 from itertools import groupby
 from email.mime.multipart import MIMEMultipart
 from email.mime.base import MIMEBase
@@ -45,6 +45,16 @@ PALABRAS_SALIDA = [
 ]
 
 AWAITING_NAME = "awaiting_name"
+
+DIAS_ES = ["Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado", "Domingo"]
+
+ABSENCE_TYPES = {
+    "vacacion": "Vacación", "vacación": "Vacación",
+    "enfermedad": "Enfermedad",
+    "licencia": "Licencia",
+    "justificada": "Justificada",
+    "injustificada": "Injustificada",
+}
 
 
 def ahora() -> datetime:
@@ -280,6 +290,195 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
 
 
+# ---------- comandos admin: feriados y ausencias ----------
+
+async def cmd_feriado(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Uso: /feriado DD/MM nombre del feriado"""
+    if not es_admin(update.effective_user.id):
+        return
+    if len(context.args) < 2:
+        await update.message.reply_text("Uso: /feriado DD/MM Nombre\nEjemplo: /feriado 25/12 Navidad")
+        return
+    try:
+        day, month = context.args[0].split("/")
+        d = date(ahora().year, int(month), int(day))
+    except Exception:
+        await update.message.reply_text("Fecha inválida. Usá el formato DD/MM")
+        return
+    name = " ".join(context.args[1:])
+    db.add_holiday(d, name)
+    await update.message.reply_text(f"Feriado agregado: {d.strftime('%d/%m/%Y')} — {name}")
+
+
+async def cmd_borrarf(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Uso: /borrarf DD/MM"""
+    if not es_admin(update.effective_user.id):
+        return
+    if not context.args:
+        await update.message.reply_text("Uso: /borrarf DD/MM")
+        return
+    try:
+        day, month = context.args[0].split("/")
+        d = date(ahora().year, int(month), int(day))
+    except Exception:
+        await update.message.reply_text("Fecha inválida. Usá el formato DD/MM")
+        return
+    if db.remove_holiday(d):
+        await update.message.reply_text(f"Feriado eliminado: {d.strftime('%d/%m/%Y')}")
+    else:
+        await update.message.reply_text(f"No había feriado registrado para {d.strftime('%d/%m/%Y')}")
+
+
+async def cmd_feriados(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Lista feriados del mes actual."""
+    if not es_admin(update.effective_user.id):
+        return
+    hoy = ahora().date()
+    feriados = db.get_holidays_month(hoy.year, hoy.month)
+    if not feriados:
+        await update.message.reply_text(f"No hay feriados registrados para este mes.")
+        return
+    lines = [f"*Feriados {MESES_ES[hoy.month]} {hoy.year}:*"]
+    for d_str, name in sorted(feriados.items()):
+        d = date.fromisoformat(d_str)
+        lines.append(f"  {d.strftime('%d/%m')} — {name}")
+    await update.message.reply_text("\n".join(lines), parse_mode="Markdown")
+
+
+async def cmd_ausencia(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Uso: /ausencia Juan Perez vacacion 25/06"""
+    if not es_admin(update.effective_user.id):
+        return
+    if len(context.args) < 3:
+        await update.message.reply_text(
+            "Uso: /ausencia Nombre tipo DD/MM\n"
+            "Tipos: vacacion, enfermedad, licencia, justificada, injustificada\n"
+            "Ejemplo: /ausencia Juan Perez vacacion 25/06"
+        )
+        return
+
+    # El tipo es la penúltima palabra, la fecha es la última
+    tipo_raw = context.args[-2].lower()
+    fecha_raw = context.args[-1]
+    nombre = " ".join(context.args[:-2])
+
+    if tipo_raw not in ABSENCE_TYPES:
+        await update.message.reply_text(
+            f"Tipo inválido: {tipo_raw}\n"
+            "Tipos válidos: vacacion, enfermedad, licencia, justificada, injustificada"
+        )
+        return
+
+    try:
+        day, month = fecha_raw.split("/")
+        d = date(ahora().year, int(month), int(day))
+    except Exception:
+        await update.message.reply_text("Fecha inválida. Usá el formato DD/MM")
+        return
+
+    matches = db.find_employee_by_name(nombre)
+    if not matches:
+        await update.message.reply_text(f"No encontré ningún empleado con ese nombre.")
+        return
+    if len(matches) > 1:
+        names = ", ".join(m["name"] for m in matches)
+        await update.message.reply_text(f"Encontré varios: {names}\nSé más específico.")
+        return
+
+    emp = matches[0]
+    db.add_absence(emp["telegram_id"], d, tipo_raw)
+    label = ABSENCE_TYPES[tipo_raw]
+    await update.message.reply_text(
+        f"Ausencia registrada:\n{emp['name']} — {label} — {d.strftime('%d/%m/%Y')}"
+    )
+
+
+async def cmd_ausencias(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Lista ausencias del mes actual."""
+    if not es_admin(update.effective_user.id):
+        return
+    hoy = ahora().date()
+    last = calendar.monthrange(hoy.year, hoy.month)[1]
+    start = date(hoy.year, hoy.month, 1)
+    end = date(hoy.year, hoy.month, last)
+    ausencias = db.get_absences(start, end)
+
+    if not ausencias:
+        await update.message.reply_text("No hay ausencias registradas este mes.")
+        return
+
+    lines = [f"*Ausencias {MESES_ES[hoy.month]} {hoy.year}:*"]
+    for tid, dias in ausencias.items():
+        emp = db.get_employee(tid)
+        name = emp["name"] if emp else f"ID {tid}"
+        for d_str, tipo in sorted(dias.items()):
+            d = date.fromisoformat(d_str)
+            lines.append(f"  {name} — {ABSENCE_TYPES.get(tipo, tipo)} — {d.strftime('%d/%m')}")
+    await update.message.reply_text("\n".join(lines), parse_mode="Markdown")
+
+
+# ---------- notificaciones automáticas ----------
+
+async def job_aviso_entrada(context: CallbackContext):
+    """09:30 — avisa quién no fichó entrada (días hábiles)."""
+    hoy = ahora().date()
+    if hoy.weekday() >= 5:  # sábado o domingo
+        return
+    if db.is_holiday(hoy):
+        return
+
+    sin_entrada = db.get_employees_without_entry(hoy)
+    if not sin_entrada:
+        return
+
+    nombres = "\n".join(f"  • {e['name']}" for e in sin_entrada)
+    for admin_id in ADMIN_IDS:
+        await context.bot.send_message(
+            chat_id=admin_id,
+            text=f"*Sin entrada registrada hoy ({hoy.strftime('%d/%m')}):*\n{nombres}",
+            parse_mode="Markdown",
+        )
+    # Recordatorio individual a cada empleado
+    for emp in sin_entrada:
+        try:
+            await context.bot.send_message(
+                chat_id=emp["telegram_id"],
+                text="Recordatorio: todavía no registraste tu entrada de hoy.\nEscribí /entro o \"llegué\".",
+            )
+        except Exception:
+            pass  # El empleado puede no haber iniciado el bot
+
+
+async def job_aviso_salida(context: CallbackContext):
+    """18:30 — recuerda registrar salida a quienes tienen entrada abierta."""
+    hoy = ahora().date()
+    if hoy.weekday() >= 5:
+        return
+    if db.is_holiday(hoy):
+        return
+
+    con_entrada_abierta = db.get_employees_with_open_entry(hoy)
+    if not con_entrada_abierta:
+        return
+
+    for emp in con_entrada_abierta:
+        try:
+            await context.bot.send_message(
+                chat_id=emp["telegram_id"],
+                text=f"No olvidés registrar tu salida de hoy.\nEscribí /salgo o \"me voy\".",
+            )
+        except Exception:
+            pass
+
+    nombres = "\n".join(f"  • {e['name']}" for e in con_entrada_abierta)
+    for admin_id in ADMIN_IDS:
+        await context.bot.send_message(
+            chat_id=admin_id,
+            text=f"*Sin salida registrada ({hoy.strftime('%d/%m')}):*\n{nombres}",
+            parse_mode="Markdown",
+        )
+
+
 # ---------- reporte quincena ----------
 
 MESES_ES = {
@@ -290,50 +489,80 @@ MESES_ES = {
 
 
 def _sheet_name(name: str) -> str:
-    """Nombre de hoja válido para Excel: max 31 chars, sin caracteres especiales."""
     for ch in r"/\?*[]:":
         name = name.replace(ch, "")
     return name[:31]
 
 
-def _build_xlsx(records, titulo: str) -> io.BytesIO:
-    # Estilos reutilizables
-    hdr_fill = PatternFill("solid", fgColor="1F4E79")
-    hdr_font = Font(bold=True, color="FFFFFF")
-    tot_fill = PatternFill("solid", fgColor="1F4E79")
-    tot_font = Font(bold=True, color="FFFFFF")
+# Colores de fondo por estado del día
+_COLOR = {
+    "weekend":  "D9D9D9",  # gris
+    "holiday":  "FFE699",  # amarillo dorado
+    "vacacion": "BDD7EE",  # azul claro
+    "enfermedad": "C6EFCE", # verde claro
+    "licencia": "FCE4D6",  # naranja claro
+    "justificada": "E2EFDA",
+    "injustificada": "FFC7CE", # rojo claro
+    "no_exit":  "FFEB9C",  # amarillo advertencia
+    "missing":  "FFC7CE",  # rojo claro
+}
+
+
+def _row_fill(color_key: str):
+    return PatternFill("solid", fgColor=_COLOR.get(color_key, "FFFFFF"))
+
+
+def _build_xlsx(records, titulo: str, start_date=None, end_date=None,
+                holidays: dict = None, absences: dict = None) -> io.BytesIO:
+
+    holidays  = holidays  or {}
+    absences  = absences  or {}
+    cal_mode  = start_date is not None and end_date is not None
+
+    # Columnas: con calendario incluye Día y Estado
+    if cal_mode:
+        headers   = ["Fecha", "Día", "Estado", "Entrada", "Salida", "Horas Trabajadas"]
+        col_entry = 4; col_exit = 5; col_hours = 6; ncols = 6
+    else:
+        headers   = ["Fecha", "Día", "Entrada", "Salida", "Horas Trabajadas"]
+        col_entry = 3; col_exit = 4; col_hours = 5; ncols = 5
+
+    # Estilos base
+    hdr_fill  = PatternFill("solid", fgColor="1F4E79")
+    hdr_font  = Font(bold=True, color="FFFFFF")
+    tot_fill  = PatternFill("solid", fgColor="1F4E79")
+    tot_font  = Font(bold=True, color="FFFFFF")
     name_fill = PatternFill("solid", fgColor="2E75B6")
     name_font = Font(bold=True, color="FFFFFF", size=12)
 
-    def style_header(ws, row, cols):
-        for col in range(1, cols + 1):
+    def style_header(ws, row):
+        for col in range(1, ncols + 1):
             c = ws.cell(row=row, column=col)
-            c.fill = hdr_fill
-            c.font = hdr_font
+            c.fill = hdr_fill; c.font = hdr_font
             c.alignment = Alignment(horizontal="center")
 
-    def style_total(ws, row, cols):
-        for col in range(1, cols + 1):
+    def style_total(ws, row):
+        for col in range(1, ncols + 1):
             c = ws.cell(row=row, column=col)
-            c.fill = tot_fill
-            c.font = tot_font
+            c.fill = tot_fill; c.font = tot_font
+
+    def apply_row_color(ws, row, color_key):
+        fill = _row_fill(color_key)
+        for col in range(1, ncols + 1):
+            ws.cell(row=row, column=col).fill = fill
 
     wb = openpyxl.Workbook()
 
-    # ── Hoja 1: Resumen ──────────────────────────────────────────────────────
+    # ── Hoja Resumen ─────────────────────────────────────────────────────────
     ws_res = wb.active
     ws_res.title = "Resumen"
-
-    # Título del período
-    ws_res.merge_cells("A1:B1")
+    ws_res.merge_cells(f"A1:B1")
     t = ws_res.cell(row=1, column=1, value=titulo)
-    t.font = Font(bold=True, size=13)
-    t.alignment = Alignment(horizontal="center")
+    t.font = Font(bold=True, size=13); t.alignment = Alignment(horizontal="center")
 
-    # Encabezados resumen
-    ws_res.cell(row=2, column=1, value="Empleado")
-    ws_res.cell(row=2, column=2, value="Total Horas")
-    style_header(ws_res, 2, 2)
+    for col, h in enumerate(["Empleado", "Total Horas"], start=1):
+        c = ws_res.cell(row=2, column=col, value=h)
+        c.fill = hdr_fill; c.font = hdr_font; c.alignment = Alignment(horizontal="center")
 
     ws_res.column_dimensions["A"].width = 26
     ws_res.column_dimensions["B"].width = 16
@@ -341,98 +570,186 @@ def _build_xlsx(records, titulo: str) -> io.BytesIO:
     records_sorted = sorted(records, key=lambda r: (r["name"], r["date"]))
     grouped = {name: list(g) for name, g in groupby(records_sorted, key=lambda r: r["name"])}
 
-    summary_row = 3
-    summary_refs = {}   # name -> fila en resumen
-    detail_total = {}   # name -> (sheet_name, fila_total)
+    # También incluir empleados que solo tienen ausencias (sin registros)
+    if cal_mode:
+        all_employees = {e["name"]: e["telegram_id"] for e in db.list_employees()}
+        for name in all_employees:
+            if name not in grouped:
+                grouped[name] = []
+
+    summary_row  = 3
+    summary_refs = {}
+    detail_total = {}
 
     for name in sorted(grouped.keys()):
         ws_res.cell(row=summary_row, column=1, value=name)
         summary_refs[name] = summary_row
         summary_row += 1
 
-    # Fila TOTAL GENERAL en resumen (se completa después)
     grand_row = summary_row
-    style_total(ws_res, grand_row, 2)
+    style_total(ws_res, grand_row)
+    for col in range(1, 3):
+        ws_res.cell(row=grand_row, column=col).fill = tot_fill
     ws_res.cell(row=grand_row, column=1, value="TOTAL GENERAL").font = tot_font
     ws_res.cell(row=grand_row, column=1).fill = tot_fill
-    ws_res.cell(row=grand_row, column=1).alignment = Alignment(horizontal="left")
+
+    # ── Leyenda de colores en Resumen ────────────────────────────────────────
+    leg_row = grand_row + 2
+    ws_res.cell(row=leg_row, column=1, value="Leyenda:").font = Font(bold=True)
+    leyenda = [
+        ("Fin de semana", "weekend"), ("Feriado", "holiday"),
+        ("Vacación", "vacacion"), ("Enfermedad", "enfermedad"),
+        ("Licencia", "licencia"), ("Sin salida", "no_exit"),
+        ("Ausente", "missing"),
+    ]
+    for i, (label, key) in enumerate(leyenda):
+        r = leg_row + 1 + i
+        ws_res.cell(row=r, column=1, value=label).fill = _row_fill(key)
+        ws_res.cell(row=r, column=1).alignment = Alignment(horizontal="left")
 
     # ── Una hoja por empleado ─────────────────────────────────────────────────
     for name, emp_records in sorted(grouped.items()):
         sname = _sheet_name(name)
         ws = wb.create_sheet(title=sname)
 
-        # Fila 1: nombre del empleado (título)
-        ws.merge_cells("A1:D1")
+        # Índice de registros por fecha para acceso O(1)
+        by_date = {r["date"]: r for r in emp_records}
+
+        # Ausencias de este empleado
+        emp_tid  = None
+        emp_list = db.find_employee_by_name(name)
+        if emp_list:
+            emp_tid = emp_list[0]["telegram_id"]
+        emp_absences = absences.get(emp_tid, {}) if emp_tid else {}
+
+        # Fila 1: título con nombre
+        ws.merge_cells(f"A1:{chr(64+ncols)}1")
         nc = ws.cell(row=1, column=1, value=name)
-        nc.fill = name_fill
-        nc.font = name_font
+        nc.fill = name_fill; nc.font = name_font
         nc.alignment = Alignment(horizontal="center")
 
         # Fila 2: encabezados
-        for col, h in enumerate(["Fecha", "Entrada", "Salida", "Horas Trabajadas"], start=1):
+        for col, h in enumerate(headers, start=1):
             ws.cell(row=2, column=col, value=h)
-        style_header(ws, 2, 4)
+        style_header(ws, 2)
 
-        # Filas de datos (desde fila 3)
         data_start = 3
-        row = data_start
-        for r in emp_records:
-            ws.cell(row=row, column=1, value=r["date"])
+        cur_row = data_start
 
-            if r["entry_time"]:
-                c = ws.cell(row=row, column=2, value=r["entry_time"].replace(tzinfo=None).time())
-                c.number_format = "HH:MM"
-            else:
-                ws.cell(row=row, column=2, value="")
+        if cal_mode:
+            # ── Modo calendario: todos los días del período ───────────────
+            from datetime import timedelta
+            current_day = start_date
+            while current_day <= end_date:
+                d_str    = current_day.isoformat()
+                weekday  = current_day.weekday()
+                day_name = DIAS_ES[weekday]
+                is_we    = weekday >= 5
+                holiday  = holidays.get(d_str)
+                absence  = emp_absences.get(d_str)
+                record   = by_date.get(d_str)
 
-            if r["exit_time"]:
-                c = ws.cell(row=row, column=3, value=r["exit_time"].replace(tzinfo=None).time())
-                c.number_format = "HH:MM"
-            else:
-                ws.cell(row=row, column=3, value="Sin salida")
+                ws.cell(cur_row, 1, current_day.strftime("%d/%m/%Y"))
+                ws.cell(cur_row, 2, day_name)
 
-            c = ws.cell(row=row, column=4,
-                        value=f'=IF(C{row}="Sin salida","Sin salida",(C{row}-B{row})*24)')
-            c.number_format = "0.00"
-            c.alignment = Alignment(horizontal="center")
-            row += 1
+                if is_we:
+                    ws.cell(cur_row, 3, "Fin de semana")
+                    apply_row_color(ws, cur_row, "weekend")
 
-        data_end = row - 1
-        total_row = row
+                elif holiday:
+                    ws.cell(cur_row, 3, f"Feriado: {holiday}")
+                    apply_row_color(ws, cur_row, "holiday")
 
-        # Fila TOTAL del empleado
-        style_total(ws, total_row, 4)
-        ws.cell(row=total_row, column=3, value="TOTAL").font = tot_font
-        ws.cell(row=total_row, column=3).fill = tot_fill
-        ws.cell(row=total_row, column=3).alignment = Alignment(horizontal="right")
-        tc = ws.cell(row=total_row, column=4,
-                     value=f'=SUMIF(D{data_start}:D{data_end},"<>Sin salida",D{data_start}:D{data_end})')
-        tc.number_format = "0.00"
-        tc.font = tot_font
-        tc.fill = tot_fill
-        tc.alignment = Alignment(horizontal="center")
+                elif absence:
+                    label = ABSENCE_TYPES.get(absence, absence.capitalize())
+                    ws.cell(cur_row, 3, label)
+                    apply_row_color(ws, cur_row, absence)
 
-        detail_total[name] = (sname, total_row)
+                elif record:
+                    if record["entry_time"] and record["exit_time"]:
+                        ws.cell(cur_row, 3, "Trabajó")
+                        c = ws.cell(cur_row, col_entry, record["entry_time"].replace(tzinfo=None).time())
+                        c.number_format = "HH:MM"
+                        c = ws.cell(cur_row, col_exit, record["exit_time"].replace(tzinfo=None).time())
+                        c.number_format = "HH:MM"
+                        c = ws.cell(cur_row, col_hours,
+                                    f"=(E{cur_row}-D{cur_row})*24")
+                        c.number_format = "0.00"
+                        c.alignment = Alignment(horizontal="center")
+                    else:
+                        ws.cell(cur_row, 3, "Sin salida")
+                        c = ws.cell(cur_row, col_entry, record["entry_time"].replace(tzinfo=None).time())
+                        c.number_format = "HH:MM"
+                        ws.cell(cur_row, col_hours, "Sin salida")
+                        apply_row_color(ws, cur_row, "no_exit")
+
+                else:
+                    ws.cell(cur_row, 3, "Ausente")
+                    apply_row_color(ws, cur_row, "missing")
+
+                cur_row += 1
+                current_day += timedelta(days=1)
+
+        else:
+            # ── Modo simple: solo los registros existentes ────────────────
+            for r in emp_records:
+                d = date.fromisoformat(r["date"])
+                ws.cell(cur_row, 1, r["date"])
+                ws.cell(cur_row, 2, DIAS_ES[d.weekday()])
+                if r["entry_time"]:
+                    c = ws.cell(cur_row, col_entry, r["entry_time"].replace(tzinfo=None).time())
+                    c.number_format = "HH:MM"
+                if r["exit_time"]:
+                    c = ws.cell(cur_row, col_exit, r["exit_time"].replace(tzinfo=None).time())
+                    c.number_format = "HH:MM"
+                    c = ws.cell(cur_row, col_hours,
+                                f"=(D{cur_row}-C{cur_row})*24")
+                    c.number_format = "0.00"
+                    c.alignment = Alignment(horizontal="center")
+                else:
+                    ws.cell(cur_row, col_hours, "Sin salida")
+                    apply_row_color(ws, cur_row, "no_exit")
+                cur_row += 1
+
+        data_end  = cur_row - 1
+        total_row = cur_row
+
+        style_total(ws, total_row)
+        lc = ws.cell(total_row, ncols - 1, "TOTAL")
+        lc.font = tot_font; lc.fill = tot_fill
+        lc.alignment = Alignment(horizontal="right")
+        hcol_letter = chr(64 + col_hours)
+        tc = ws.cell(total_row, col_hours,
+                     f'=SUMIF({hcol_letter}{data_start}:{hcol_letter}{data_end},'
+                     f'"<>Sin salida",{hcol_letter}{data_start}:{hcol_letter}{data_end})')
+        tc.number_format = "0.00"; tc.font = tot_font
+        tc.fill = tot_fill; tc.alignment = Alignment(horizontal="center")
+
+        detail_total[name] = (sname, total_row, col_hours)
 
         ws.column_dimensions["A"].width = 14
-        ws.column_dimensions["B"].width = 10
-        ws.column_dimensions["C"].width = 12
-        ws.column_dimensions["D"].width = 18
+        ws.column_dimensions["B"].width = 12
+        if cal_mode:
+            ws.column_dimensions["C"].width = 20
+            ws.column_dimensions["D"].width = 10
+            ws.column_dimensions["E"].width = 10
+            ws.column_dimensions["F"].width = 18
+        else:
+            ws.column_dimensions["C"].width = 10
+            ws.column_dimensions["D"].width = 10
+            ws.column_dimensions["E"].width = 18
 
-    # ── Completar referencias en Resumen ─────────────────────────────────────
+    # ── Completar Resumen con referencias a hojas ─────────────────────────────
     for name, srow in summary_refs.items():
-        sname, trow = detail_total[name]
-        c = ws_res.cell(row=srow, column=2, value=f"='{sname}'!D{trow}")
-        c.number_format = "0.00"
-        c.alignment = Alignment(horizontal="center")
+        sname, trow, hcol = detail_total[name]
+        hcol_letter = chr(64 + hcol)
+        c = ws_res.cell(srow, 2, f"='{sname}'!{hcol_letter}{trow}")
+        c.number_format = "0.00"; c.alignment = Alignment(horizontal="center")
 
     grand_refs = ",".join([f"B{r}" for r in summary_refs.values()])
-    gc = ws_res.cell(row=grand_row, column=2, value=f"=SUM({grand_refs})")
-    gc.number_format = "0.00"
-    gc.font = tot_font
-    gc.fill = tot_fill
-    gc.alignment = Alignment(horizontal="center")
+    gc = ws_res.cell(grand_row, 2, f"=SUM({grand_refs})")
+    gc.number_format = "0.00"; gc.font = tot_font
+    gc.fill = tot_fill; gc.alignment = Alignment(horizontal="center")
 
     buffer = io.BytesIO()
     wb.save(buffer)
@@ -491,8 +808,11 @@ async def job_quincena(context: CallbackContext):
     else:
         return
 
-    records = db.get_records_by_period(start, end)
-    buffer = _build_xlsx(records, label)
+    records  = db.get_records_by_period(start, end)
+    holidays = db.get_holidays(start, end)
+    absences = db.get_absences(start, end)
+    buffer   = _build_xlsx(records, label, start_date=start, end_date=end,
+                           holidays=holidays, absences=absences)
 
     # Enviar por Telegram a todos los admins
     for admin_id in ADMIN_IDS:
@@ -528,19 +848,28 @@ def main():
 
     app = Application.builder().token(TOKEN).build()
 
-    app.add_handler(CommandHandler("start", cmd_start))
-    app.add_handler(CommandHandler("entro", cmd_entro))
-    app.add_handler(CommandHandler("salgo", cmd_salgo))
-    app.add_handler(CommandHandler("estado", cmd_estado))
-    app.add_handler(CommandHandler("reporte", cmd_reporte))
+    app.add_handler(CommandHandler("start",     cmd_start))
+    app.add_handler(CommandHandler("entro",     cmd_entro))
+    app.add_handler(CommandHandler("salgo",     cmd_salgo))
+    app.add_handler(CommandHandler("estado",    cmd_estado))
+    app.add_handler(CommandHandler("reporte",   cmd_reporte))
     app.add_handler(CommandHandler("empleados", cmd_empleados))
+    app.add_handler(CommandHandler("feriado",   cmd_feriado))
+    app.add_handler(CommandHandler("borrarf",   cmd_borrarf))
+    app.add_handler(CommandHandler("feriados",  cmd_feriados))
+    app.add_handler(CommandHandler("ausencia",  cmd_ausencia))
+    app.add_handler(CommandHandler("ausencias", cmd_ausencias))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text))
 
-    # Reporte automático de quincena: todos los días a las 18:00 (verifica si es día 15 o último del mes)
-    app.job_queue.run_daily(
-        job_quincena,
-        time=dt_time(hour=18, minute=0, tzinfo=TIMEZONE),
-    )
+    # Reporte quincena automático (día 15 y último del mes a las 18:00)
+    app.job_queue.run_daily(job_quincena,
+                            time=dt_time(hour=18, minute=0, tzinfo=TIMEZONE))
+    # Aviso mañana: quién no fichó entrada (09:30)
+    app.job_queue.run_daily(job_aviso_entrada,
+                            time=dt_time(hour=9, minute=30, tzinfo=TIMEZONE))
+    # Aviso tarde: quién no fichó salida (18:30)
+    app.job_queue.run_daily(job_aviso_salida,
+                            time=dt_time(hour=18, minute=30, tzinfo=TIMEZONE))
 
     print("Bot iniciado. Esperando mensajes...")
     app.run_polling(drop_pending_updates=True)
