@@ -59,19 +59,59 @@ def _sheet_name(name: str) -> str:
 
 
 def _scheduled_hours(shift: tuple) -> float:
-    """Horas de jornada según turno (eh, em, sh, sm)."""
     eh, em, sh, sm = shift
     return (sh * 60 + sm - eh * 60 - em) / 60
+
+
+def calcular_horas(entry_dt: datetime, exit_dt: datetime,
+                   weekday: int, is_holiday: bool) -> tuple:
+    """
+    Devuelve (horas_normales, horas_extra_50, horas_extra_100).
+
+    Reglas:
+      Lun-Vie 07:00-16:00          → normales
+      Lun-Vie fuera de ese rango   → extra 50%
+      Sábado  07:00-11:00          → extra 50%
+      Sábado  11:00+ / antes 07:00 → extra 100%
+      Domingo / Feriado             → extra 100%
+    """
+    entry = entry_dt.replace(tzinfo=None)
+    exit_ = exit_dt.replace(tzinfo=None)
+
+    if exit_ <= entry:
+        return (0.0, 0.0, 0.0)
+
+    def _overlap(zone_h0: int, zone_m0: int, zone_h1: int, zone_m1: int) -> float:
+        base = entry.replace(hour=0, minute=0, second=0, microsecond=0)
+        zs   = base.replace(hour=zone_h0, minute=zone_m0)
+        ze   = base.replace(hour=zone_h1, minute=zone_m1)
+        s    = max(entry, zs)
+        e    = min(exit_,  ze)
+        return max(0.0, (e - s).total_seconds() / 3600)
+
+    if is_holiday or weekday == 6:           # Feriado o Domingo → 100%
+        extra_100 = (exit_ - entry).total_seconds() / 3600
+        return (0.0, 0.0, round(extra_100, 2))
+
+    if weekday == 5:                          # Sábado
+        extra_50  = _overlap(7,  0, 11, 0)   # 07:00-11:00 → 50%
+        extra_100 = (_overlap(0,  0,  7, 0)  # antes 07:00 → 100%
+                   + _overlap(11, 0, 23, 59)) # después 11:00 → 100%
+        return (0.0, round(extra_50, 2), round(extra_100, 2))
+
+    # Lunes a Viernes
+    normal   = _overlap(7,  0, 16, 0)        # 07:00-16:00 → normales
+    extra_50 = (_overlap(0,  0,  7, 0)       # antes 07:00 → 50%
+              + _overlap(16, 0, 23, 59))      # después 16:00 → 50%
+    return (round(normal, 2), round(extra_50, 2), 0.0)
 
 
 def build_xlsx(db, records, titulo: str,
                start_date: date = None, end_date: date = None,
                holidays: dict = None, absences: dict = None) -> io.BytesIO:
     """
-    Genera el XLSX de asistencia.
-    - Si start_date/end_date están presentes: modo calendario completo con colores.
-    - Si no: modo simple (solo registros existentes).
-    Incluye columna de horas extra basada en el turno de cada empleado.
+    Genera el XLSX de asistencia con desglose de horas normales,
+    extra 50% y extra 100% según convenio.
     """
     holidays = holidays or {}
     absences = absences or {}
@@ -80,12 +120,14 @@ def build_xlsx(db, records, titulo: str,
 
     if cal_mode:
         headers   = ["Fecha", "Día", "Estado", "Entrada", "Salida",
-                     "Horas Trab.", "Hs. Extra"]
-        col_entry = 4; col_exit = 5; col_hours = 6; col_extra = 7; ncols = 7
+                     "Hs. Normales", "Hs. Extra 50%", "Hs. Extra 100%"]
+        col_entry = 4; col_exit = 5
+        col_norm  = 6; col_50 = 7; col_100 = 8; ncols = 8
     else:
         headers   = ["Fecha", "Día", "Entrada", "Salida",
-                     "Horas Trab.", "Hs. Extra"]
-        col_entry = 3; col_exit = 4; col_hours = 5; col_extra = 6; ncols = 6
+                     "Hs. Normales", "Hs. Extra 50%", "Hs. Extra 100%"]
+        col_entry = 3; col_exit = 4
+        col_norm  = 5; col_50 = 6; col_100 = 7; ncols = 7
 
     hdr_fill  = PatternFill("solid", fgColor="1F4E79")
     hdr_font  = Font(bold=True, color="FFFFFF")
@@ -120,14 +162,16 @@ def build_xlsx(db, records, titulo: str,
     t.font = Font(bold=True, size=13)
     t.alignment = Alignment(horizontal="center")
 
-    for col, h in enumerate(["Empleado", "Total Horas", "Hs. Extra"], start=1):
+    for col, h in enumerate(["Empleado", "Hs. Normales", "Hs. Extra 50%", "Hs. Extra 100%"],
+                            start=1):
         c = ws_res.cell(2, col, h)
         c.fill = hdr_fill; c.font = hdr_font
         c.alignment = Alignment(horizontal="center")
 
     ws_res.column_dimensions["A"].width = 26
     ws_res.column_dimensions["B"].width = 14
-    ws_res.column_dimensions["C"].width = 12
+    ws_res.column_dimensions["C"].width = 14
+    ws_res.column_dimensions["D"].width = 16
 
     records_sorted = sorted(records, key=lambda r: (r["name"], r["date"]))
     grouped = {n: list(g)
@@ -149,7 +193,7 @@ def build_xlsx(db, records, titulo: str,
 
     grand_row = summary_row
     style_tot(ws_res, grand_row)
-    for c in range(1, 4):
+    for c in range(1, 5):
         ws_res.cell(grand_row, c).fill = tot_fill
     ws_res.cell(grand_row, 1, "TOTAL GENERAL").font = tot_font
     ws_res.cell(grand_row, 1).fill = tot_fill
@@ -176,8 +220,6 @@ def build_xlsx(db, records, titulo: str,
         emp_list = db.find_employee_by_name(name)
         emp_tid  = emp_list[0]["telegram_id"] if emp_list else None
         emp_abs  = absences.get(emp_tid, {}) if emp_tid else {}
-        shift    = db.get_shift(emp_tid) if emp_tid else (9, 0, 18, 0)
-        sched_h  = _scheduled_hours(shift)
 
         ws.merge_cells(f"A1:{chr(64+ncols)}1")
         nc = ws.cell(1, 1, name)
@@ -191,34 +233,56 @@ def build_xlsx(db, records, titulo: str,
         data_start = 3
         cur_row    = data_start
 
+        def _write_hours(row, norm, e50, e100):
+            has_extra = e50 > 0 or e100 > 0
+            for col, val in ((col_norm, norm), (col_50, e50), (col_100, e100)):
+                if val > 0:
+                    c = ws.cell(row, col, val)
+                    c.number_format = "0.00"
+                    c.alignment = Alignment(horizontal="center")
+            if has_extra:
+                color_row(ws, row, "overtime")
+
         if cal_mode:
             current_day = start_date
             while current_day <= end_date:
-                d_str   = current_day.isoformat()
-                weekday = current_day.weekday()
-                is_we   = weekday >= 5
-                holiday = holidays.get(d_str)
-                absence = emp_abs.get(d_str)
-                record  = by_date.get(d_str)
+                d_str    = current_day.isoformat()
+                weekday  = current_day.weekday()
+                is_we    = weekday >= 5
+                holiday  = holidays.get(d_str)
+                absence  = emp_abs.get(d_str)
+                record   = by_date.get(d_str)
+                is_hday  = bool(holiday)
 
                 ws.cell(cur_row, 1, current_day.strftime("%d/%m/%Y"))
                 ws.cell(cur_row, 2, DIAS_ES[weekday])
 
-                if is_we:
+                if is_we and not is_hday:
                     ws.cell(cur_row, 3, "Fin de semana")
                     color_row(ws, cur_row, "weekend")
 
-                elif holiday:
+                elif is_hday:
                     ws.cell(cur_row, 3, f"Feriado: {holiday}")
                     color_row(ws, cur_row, "holiday")
+                    # Si hay registro en feriado → calcular horas (todas al 100%)
+                    if record and record.get("entry_time") and record.get("exit_time"):
+                        c = ws.cell(cur_row, col_entry,
+                                    record["entry_time"].replace(tzinfo=None).time())
+                        c.number_format = "HH:MM"
+                        c = ws.cell(cur_row, col_exit,
+                                    record["exit_time"].replace(tzinfo=None).time())
+                        c.number_format = "HH:MM"
+                        n, e50, e100 = calcular_horas(
+                            record["entry_time"], record["exit_time"], weekday, True)
+                        _write_hours(cur_row, n, e50, e100)
 
                 elif absence:
                     ws.cell(cur_row, 3, ABSENCE_TYPES.get(absence, absence.capitalize()))
                     color_row(ws, cur_row, absence)
 
                 elif record and record.get("entry_time") and record.get("exit_time"):
-                    worked = record["total_hours"] or 0
-                    extra  = max(0.0, round(worked - sched_h, 2))
+                    n, e50, e100 = calcular_horas(
+                        record["entry_time"], record["exit_time"], weekday, False)
                     ws.cell(cur_row, 3, "Trabajó")
                     c = ws.cell(cur_row, col_entry,
                                 record["entry_time"].replace(tzinfo=None).time())
@@ -226,13 +290,7 @@ def build_xlsx(db, records, titulo: str,
                     c = ws.cell(cur_row, col_exit,
                                 record["exit_time"].replace(tzinfo=None).time())
                     c.number_format = "HH:MM"
-                    c = ws.cell(cur_row, col_hours, round(worked, 2))
-                    c.number_format = "0.00"
-                    if extra > 0:
-                        c = ws.cell(cur_row, col_extra, extra)
-                        c.number_format = "0.00"
-                        c.alignment = Alignment(horizontal="center")
-                        color_row(ws, cur_row, "overtime")
+                    _write_hours(cur_row, n, e50, e100)
 
                 elif record and record.get("entry_time"):
                     ws.cell(cur_row, 3, "Sin salida")
@@ -241,7 +299,7 @@ def build_xlsx(db, records, titulo: str,
                     c.number_format = "HH:MM"
                     color_row(ws, cur_row, "no_exit")
 
-                elif current_day <= today:
+                elif current_day <= today and not is_we:
                     ws.cell(cur_row, 3, "Ausente")
                     color_row(ws, cur_row, "missing")
 
@@ -261,16 +319,11 @@ def build_xlsx(db, records, titulo: str,
                     c = ws.cell(cur_row, col_exit,
                                 r["exit_time"].replace(tzinfo=None).time())
                     c.number_format = "HH:MM"
-                worked = r.get("total_hours") or 0
-                extra  = max(0.0, round(worked - sched_h, 2))
-                if worked:
-                    c = ws.cell(cur_row, col_hours, round(worked, 2))
-                    c.number_format = "0.00"
-                if extra > 0:
-                    c = ws.cell(cur_row, col_extra, extra)
-                    c.number_format = "0.00"
-                    color_row(ws, cur_row, "overtime")
-                elif not r.get("exit_time"):
+                    is_hday = bool(holidays.get(r["date"]))
+                    n, e50, e100 = calcular_horas(
+                        r["entry_time"], r["exit_time"], d.weekday(), is_hday)
+                    _write_hours(cur_row, n, e50, e100)
+                else:
                     color_row(ws, cur_row, "no_exit")
                 cur_row += 1
 
@@ -278,20 +331,16 @@ def build_xlsx(db, records, titulo: str,
         total_row = cur_row
         style_tot(ws, total_row)
 
-        lbl_col = col_hours - 1
-        lbl = ws.cell(total_row, lbl_col, "TOTAL")
+        lbl = ws.cell(total_row, col_norm - 1, "TOTAL")
         lbl.font = tot_font; lbl.fill = tot_fill
         lbl.alignment = Alignment(horizontal="right")
 
-        hc = ws.cell(total_row, col_hours,
-                     f"=SUM({chr(64+col_hours)}{data_start}:{chr(64+col_hours)}{data_end})")
-        hc.number_format = "0.00"; hc.font = tot_font
-        hc.fill = tot_fill; hc.alignment = Alignment(horizontal="center")
-
-        ec = ws.cell(total_row, col_extra,
-                     f"=SUM({chr(64+col_extra)}{data_start}:{chr(64+col_extra)}{data_end})")
-        ec.number_format = "0.00"; ec.font = tot_font
-        ec.fill = tot_fill; ec.alignment = Alignment(horizontal="center")
+        for col in (col_norm, col_50, col_100):
+            lc = chr(64 + col)
+            tc = ws.cell(total_row, col,
+                         f"=SUM({lc}{data_start}:{lc}{data_end})")
+            tc.number_format = "0.00"; tc.font = tot_font
+            tc.fill = tot_fill; tc.alignment = Alignment(horizontal="center")
 
         detail_info[name] = (sname, total_row)
 
@@ -314,24 +363,19 @@ def build_xlsx(db, records, titulo: str,
         if name not in detail_info:
             continue
         sname, trow = detail_info[name]
-        hcol = chr(64 + col_hours)
-        ecol = chr(64 + col_extra)
-        c = ws_res.cell(srow, 2, f"='{sname}'!{hcol}{trow}")
-        c.number_format = "0.00"; c.alignment = Alignment(horizontal="center")
-        c = ws_res.cell(srow, 3, f"='{sname}'!{ecol}{trow}")
-        c.number_format = "0.00"; c.alignment = Alignment(horizontal="center")
+        for res_col, emp_col in ((2, col_norm), (3, col_50), (4, col_100)):
+            lc = chr(64 + emp_col)
+            c  = ws_res.cell(srow, res_col, f"='{sname}'!{lc}{trow}")
+            c.number_format = "0.00"; c.alignment = Alignment(horizontal="center")
 
     if summary_refs:
-        h_refs = ",".join(f"B{r}" for r in summary_refs.values())
-        e_refs = ",".join(f"C{r}" for r in summary_refs.values())
-        gc = ws_res.cell(grand_row, 2, f"=SUM({h_refs})")
-        gc.number_format = "0.00"; gc.font = tot_font
-        gc.fill = tot_fill; gc.alignment = Alignment(horizontal="center")
-        ge = ws_res.cell(grand_row, 3, f"=SUM({e_refs})")
-        ge.number_format = "0.00"; ge.font = tot_font
-        ge.fill = tot_fill; ge.alignment = Alignment(horizontal="center")
+        for res_col, col_letter in ((2, "B"), (3, "C"), (4, "D")):
+            refs = ",".join(f"{col_letter}{r}" for r in summary_refs.values())
+            gc   = ws_res.cell(grand_row, res_col, f"=SUM({refs})")
+            gc.number_format = "0.00"; gc.font = tot_font
+            gc.fill = tot_fill; gc.alignment = Alignment(horizontal="center")
     else:
-        for c in (2, 3):
+        for c in (2, 3, 4):
             ws_res.cell(grand_row, c, 0).font = tot_font
             ws_res.cell(grand_row, c).fill = tot_fill
 

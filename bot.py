@@ -20,9 +20,8 @@ from telegram.ext import (
 
 from database import Database
 from reports  import (
-    build_xlsx, send_email,
+    build_xlsx, send_email, calcular_horas,
     MESES_ES, ABSENCE_TYPES, DIAS_ES,
-    _scheduled_hours,
 )
 
 load_dotenv()
@@ -193,19 +192,26 @@ async def _hacer_salgo(update: Update, context: ContextTypes.DEFAULT_TYPE = None
         )
         return
 
-    horas = result["total_hours"]
-    sched = _scheduled_hours(db.get_shift(user.id))
-    extra = max(0.0, round(horas - sched, 2))
+    # Obtener registro completo para calcular horas por franja
+    status    = db.get_today_status(user.id, ts.date())
+    is_hday   = bool(db.is_holiday(ts.date()))
+    weekday   = ts.weekday()
+
+    norm = e50 = e100 = 0.0
+    if status and status.get("entry_time") and status.get("exit_time"):
+        norm, e50, e100 = calcular_horas(
+            status["entry_time"], status["exit_time"], weekday, is_hday)
 
     msg = (
         f"*Salida registrada*\n"
         f"Nombre: {employee['name']}\n"
         f"Hora:   {ts.strftime('%H:%M')}\n"
-        f"Trabajaste {horas:.1f} hs hoy."
     )
-    if extra > 0:
-        msg += f"\n*+{extra:.1f} hs extra* sobre turno de {sched:.0f} hs."
-    await update.message.reply_text(msg, parse_mode="Markdown")
+    if norm  > 0: msg += f"Hs. normales:    {norm:.2f}\n"
+    if e50   > 0: msg += f"Hs. extra 50%:   {e50:.2f}\n"
+    if e100  > 0: msg += f"Hs. extra 100%:  {e100:.2f}\n"
+
+    await update.message.reply_text(msg.strip(), parse_mode="Markdown")
 
 
 async def cmd_entro(update: Update, context: ContextTypes.DEFAULT_TYPE):
