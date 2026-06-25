@@ -769,6 +769,7 @@ async def job_backup(context: CallbackContext):
     destinos = [
         os.path.join(os.path.dirname(os.path.abspath(db_path)), "backups"),
         os.path.join(os.path.expanduser("~"), "OneDrive", "FichaYA", "backups"),
+        r"G:\Mi unidad\FichaYA\backups",
     ]
 
     errores = []
