@@ -73,6 +73,15 @@ class Database:
                 UNIQUE(telegram_id, date),
                 FOREIGN KEY (telegram_id) REFERENCES employees(telegram_id)
             );
+
+            CREATE TABLE IF NOT EXISTS shifts (
+                telegram_id  INTEGER PRIMARY KEY,
+                entry_hour   INTEGER DEFAULT 9,
+                entry_minute INTEGER DEFAULT 0,
+                exit_hour    INTEGER DEFAULT 18,
+                exit_minute  INTEGER DEFAULT 0,
+                FOREIGN KEY (telegram_id) REFERENCES employees(telegram_id)
+            );
         """)
         self.conn.commit()
 
@@ -217,6 +226,75 @@ class Database:
                 dt = datetime.fromisoformat(r[field])
                 r[field] = TIMEZONE.localize(dt) if dt.tzinfo is None else dt.astimezone(TIMEZONE)
         return r
+
+    # ---------- shifts ----------
+
+    def set_shift(self, telegram_id: int, entry_hour: int, entry_minute: int,
+                  exit_hour: int, exit_minute: int):
+        self.conn.execute("""
+            INSERT OR REPLACE INTO shifts
+                (telegram_id, entry_hour, entry_minute, exit_hour, exit_minute)
+            VALUES (?, ?, ?, ?, ?)
+        """, (telegram_id, entry_hour, entry_minute, exit_hour, exit_minute))
+        self.conn.commit()
+
+    def get_shift(self, telegram_id: int) -> tuple:
+        """Returns (entry_hour, entry_minute, exit_hour, exit_minute). Default 09:00-18:00."""
+        row = self.conn.execute(
+            "SELECT * FROM shifts WHERE telegram_id = ?", (telegram_id,)
+        ).fetchone()
+        if row:
+            return (row["entry_hour"], row["entry_minute"],
+                    row["exit_hour"], row["exit_minute"])
+        return (9, 0, 18, 0)
+
+    # ---------- attendance corrections ----------
+
+    def update_attendance_field(self, telegram_id: int, d: date,
+                                field: str, new_dt: datetime) -> bool:
+        """Corrige entry_time o exit_time de un día y recalcula total_hours."""
+        record = self.conn.execute(
+            "SELECT * FROM attendance WHERE telegram_id = ? AND date = ?",
+            (telegram_id, d.isoformat()),
+        ).fetchone()
+        if not record:
+            return False
+        self.conn.execute(
+            f"UPDATE attendance SET {field} = ? WHERE telegram_id = ? AND date = ?",
+            (new_dt.isoformat(), telegram_id, d.isoformat()),
+        )
+        updated = dict(self.conn.execute(
+            "SELECT * FROM attendance WHERE telegram_id = ? AND date = ?",
+            (telegram_id, d.isoformat()),
+        ).fetchone())
+        if updated["entry_time"] and updated["exit_time"]:
+            ent = datetime.fromisoformat(updated["entry_time"])
+            ext = datetime.fromisoformat(updated["exit_time"])
+            if ent.tzinfo is None: ent = TIMEZONE.localize(ent)
+            if ext.tzinfo is None: ext = TIMEZONE.localize(ext)
+            total = (ext - ent).total_seconds() / 3600
+            self.conn.execute(
+                "UPDATE attendance SET total_hours = ? WHERE telegram_id = ? AND date = ?",
+                (total, telegram_id, d.isoformat()),
+            )
+        self.conn.commit()
+        return True
+
+    def delete_attendance(self, telegram_id: int, d: date) -> bool:
+        cur = self.conn.execute(
+            "DELETE FROM attendance WHERE telegram_id = ? AND date = ?",
+            (telegram_id, d.isoformat()),
+        )
+        self.conn.commit()
+        return cur.rowcount > 0
+
+    def get_employee_records(self, telegram_id: int, limit: int = 10):
+        rows = self.conn.execute("""
+            SELECT date, entry_time, exit_time, total_hours FROM attendance
+            WHERE telegram_id = ?
+            ORDER BY date DESC LIMIT ?
+        """, (telegram_id, limit)).fetchall()
+        return [self._parse_times(dict(r)) for r in rows]
 
     # ---------- holidays ----------
 
