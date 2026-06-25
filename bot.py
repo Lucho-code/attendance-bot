@@ -2,6 +2,7 @@ import os
 import io
 import calendar
 from datetime import datetime, time as dt_time
+from itertools import groupby
 
 import openpyxl
 from openpyxl.styles import Font, PatternFill, Alignment
@@ -225,43 +226,150 @@ MESES_ES = {
 }
 
 
+def _sheet_name(name: str) -> str:
+    """Nombre de hoja válido para Excel: max 31 chars, sin caracteres especiales."""
+    for ch in r"/\?*[]:":
+        name = name.replace(ch, "")
+    return name[:31]
+
+
 def _build_xlsx(records, titulo: str) -> io.BytesIO:
+    # Estilos reutilizables
+    hdr_fill = PatternFill("solid", fgColor="1F4E79")
+    hdr_font = Font(bold=True, color="FFFFFF")
+    tot_fill = PatternFill("solid", fgColor="1F4E79")
+    tot_font = Font(bold=True, color="FFFFFF")
+    name_fill = PatternFill("solid", fgColor="2E75B6")
+    name_font = Font(bold=True, color="FFFFFF", size=12)
+
+    def style_header(ws, row, cols):
+        for col in range(1, cols + 1):
+            c = ws.cell(row=row, column=col)
+            c.fill = hdr_fill
+            c.font = hdr_font
+            c.alignment = Alignment(horizontal="center")
+
+    def style_total(ws, row, cols):
+        for col in range(1, cols + 1):
+            c = ws.cell(row=row, column=col)
+            c.fill = tot_fill
+            c.font = tot_font
+
     wb = openpyxl.Workbook()
-    ws = wb.active
-    ws.title = "Asistencia"
 
-    headers = ["Nombre", "Fecha", "Entrada", "Salida", "Horas Trabajadas"]
-    ws.append(headers)
-    header_fill = PatternFill("solid", fgColor="1F4E79")
-    header_font = Font(bold=True, color="FFFFFF")
-    for col, _ in enumerate(headers, start=1):
-        cell = ws.cell(row=1, column=col)
-        cell.fill = header_fill
-        cell.font = header_font
-        cell.alignment = Alignment(horizontal="center")
+    # ── Hoja 1: Resumen ──────────────────────────────────────────────────────
+    ws_res = wb.active
+    ws_res.title = "Resumen"
 
-    for i, r in enumerate(records, start=2):
-        ws.cell(row=i, column=1, value=r["name"])
-        ws.cell(row=i, column=2, value=r["date"])
-        if r["entry_time"]:
-            c = ws.cell(row=i, column=3, value=r["entry_time"].replace(tzinfo=None).time())
-            c.number_format = "HH:MM"
-        else:
-            ws.cell(row=i, column=3, value="")
-        if r["exit_time"]:
-            c = ws.cell(row=i, column=4, value=r["exit_time"].replace(tzinfo=None).time())
-            c.number_format = "HH:MM"
-        else:
-            ws.cell(row=i, column=4, value="Sin salida")
-        c = ws.cell(row=i, column=5, value=f'=IF(D{i}="Sin salida","Sin salida",(D{i}-C{i})*24)')
+    # Título del período
+    ws_res.merge_cells("A1:B1")
+    t = ws_res.cell(row=1, column=1, value=titulo)
+    t.font = Font(bold=True, size=13)
+    t.alignment = Alignment(horizontal="center")
+
+    # Encabezados resumen
+    ws_res.cell(row=2, column=1, value="Empleado")
+    ws_res.cell(row=2, column=2, value="Total Horas")
+    style_header(ws_res, 2, 2)
+
+    ws_res.column_dimensions["A"].width = 26
+    ws_res.column_dimensions["B"].width = 16
+
+    records_sorted = sorted(records, key=lambda r: (r["name"], r["date"]))
+    grouped = {name: list(g) for name, g in groupby(records_sorted, key=lambda r: r["name"])}
+
+    summary_row = 3
+    summary_refs = {}   # name -> fila en resumen
+    detail_total = {}   # name -> (sheet_name, fila_total)
+
+    for name in sorted(grouped.keys()):
+        ws_res.cell(row=summary_row, column=1, value=name)
+        summary_refs[name] = summary_row
+        summary_row += 1
+
+    # Fila TOTAL GENERAL en resumen (se completa después)
+    grand_row = summary_row
+    style_total(ws_res, grand_row, 2)
+    ws_res.cell(row=grand_row, column=1, value="TOTAL GENERAL").font = tot_font
+    ws_res.cell(row=grand_row, column=1).fill = tot_fill
+    ws_res.cell(row=grand_row, column=1).alignment = Alignment(horizontal="left")
+
+    # ── Una hoja por empleado ─────────────────────────────────────────────────
+    for name, emp_records in sorted(grouped.items()):
+        sname = _sheet_name(name)
+        ws = wb.create_sheet(title=sname)
+
+        # Fila 1: nombre del empleado (título)
+        ws.merge_cells("A1:D1")
+        nc = ws.cell(row=1, column=1, value=name)
+        nc.fill = name_fill
+        nc.font = name_font
+        nc.alignment = Alignment(horizontal="center")
+
+        # Fila 2: encabezados
+        for col, h in enumerate(["Fecha", "Entrada", "Salida", "Horas Trabajadas"], start=1):
+            ws.cell(row=2, column=col, value=h)
+        style_header(ws, 2, 4)
+
+        # Filas de datos (desde fila 3)
+        data_start = 3
+        row = data_start
+        for r in emp_records:
+            ws.cell(row=row, column=1, value=r["date"])
+
+            if r["entry_time"]:
+                c = ws.cell(row=row, column=2, value=r["entry_time"].replace(tzinfo=None).time())
+                c.number_format = "HH:MM"
+            else:
+                ws.cell(row=row, column=2, value="")
+
+            if r["exit_time"]:
+                c = ws.cell(row=row, column=3, value=r["exit_time"].replace(tzinfo=None).time())
+                c.number_format = "HH:MM"
+            else:
+                ws.cell(row=row, column=3, value="Sin salida")
+
+            c = ws.cell(row=row, column=4,
+                        value=f'=IF(C{row}="Sin salida","Sin salida",(C{row}-B{row})*24)')
+            c.number_format = "0.00"
+            c.alignment = Alignment(horizontal="center")
+            row += 1
+
+        data_end = row - 1
+        total_row = row
+
+        # Fila TOTAL del empleado
+        style_total(ws, total_row, 4)
+        ws.cell(row=total_row, column=3, value="TOTAL").font = tot_font
+        ws.cell(row=total_row, column=3).fill = tot_fill
+        ws.cell(row=total_row, column=3).alignment = Alignment(horizontal="right")
+        tc = ws.cell(row=total_row, column=4,
+                     value=f'=SUMIF(D{data_start}:D{data_end},"<>Sin salida",D{data_start}:D{data_end})')
+        tc.number_format = "0.00"
+        tc.font = tot_font
+        tc.fill = tot_fill
+        tc.alignment = Alignment(horizontal="center")
+
+        detail_total[name] = (sname, total_row)
+
+        ws.column_dimensions["A"].width = 14
+        ws.column_dimensions["B"].width = 10
+        ws.column_dimensions["C"].width = 12
+        ws.column_dimensions["D"].width = 18
+
+    # ── Completar referencias en Resumen ─────────────────────────────────────
+    for name, srow in summary_refs.items():
+        sname, trow = detail_total[name]
+        c = ws_res.cell(row=srow, column=2, value=f"='{sname}'!D{trow}")
         c.number_format = "0.00"
         c.alignment = Alignment(horizontal="center")
 
-    ws.column_dimensions["A"].width = 22
-    ws.column_dimensions["B"].width = 14
-    ws.column_dimensions["C"].width = 10
-    ws.column_dimensions["D"].width = 10
-    ws.column_dimensions["E"].width = 18
+    grand_refs = ",".join([f"B{r}" for r in summary_refs.values()])
+    gc = ws_res.cell(row=grand_row, column=2, value=f"=SUM({grand_refs})")
+    gc.number_format = "0.00"
+    gc.font = tot_font
+    gc.fill = tot_fill
+    gc.alignment = Alignment(horizontal="center")
 
     buffer = io.BytesIO()
     wb.save(buffer)
