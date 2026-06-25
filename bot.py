@@ -1,7 +1,9 @@
 import os
-import csv
 import io
 from datetime import datetime
+
+import openpyxl
+from openpyxl.styles import Font, PatternFill, Alignment
 
 import pytz
 from dotenv import load_dotenv
@@ -168,24 +170,59 @@ async def cmd_reporte(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     records = db.get_all_records()
 
-    output = io.StringIO()
-    writer = csv.writer(output)
-    writer.writerow(["Nombre", "Fecha", "Entrada", "Salida", "Horas_Trabajadas"])
-    for r in records:
-        writer.writerow([
-            r["name"],
-            r["date"],
-            r["entry_time"].strftime("%H:%M") if r["entry_time"] else "",
-            r["exit_time"].strftime("%H:%M") if r["exit_time"] else "Sin salida",
-            f"{r['total_hours']:.2f}" if r["total_hours"] is not None else "",
-        ])
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "Asistencia"
 
-    output.seek(0)
-    filename = f"asistencia_{ahora().strftime('%Y%m%d_%H%M')}.csv"
-    data = output.getvalue().encode("utf-8-sig")  # BOM para abrir bien en Excel
+    # Encabezados con formato
+    headers = ["Nombre", "Fecha", "Entrada", "Salida", "Horas Trabajadas"]
+    ws.append(headers)
+    header_fill = PatternFill("solid", fgColor="1F4E79")
+    header_font = Font(bold=True, color="FFFFFF")
+    for col, _ in enumerate(headers, start=1):
+        cell = ws.cell(row=1, column=col)
+        cell.fill = header_fill
+        cell.font = header_font
+        cell.alignment = Alignment(horizontal="center")
 
+    # Filas de datos
+    for i, r in enumerate(records, start=2):
+        ws.cell(row=i, column=1, value=r["name"])
+        ws.cell(row=i, column=2, value=r["date"])
+
+        # Columna C: Entrada como valor de hora real
+        if r["entry_time"]:
+            cell_c = ws.cell(row=i, column=3, value=r["entry_time"].replace(tzinfo=None).time())
+            cell_c.number_format = "HH:MM"
+        else:
+            ws.cell(row=i, column=3, value="")
+
+        # Columna D: Salida como valor de hora real
+        if r["exit_time"]:
+            cell_d = ws.cell(row=i, column=4, value=r["exit_time"].replace(tzinfo=None).time())
+            cell_d.number_format = "HH:MM"
+        else:
+            ws.cell(row=i, column=4, value="Sin salida")
+
+        # Columna E: Fórmula automática de horas
+        cell_e = ws.cell(row=i, column=5, value=f'=IF(D{i}="Sin salida","Sin salida",(D{i}-C{i})*24)')
+        cell_e.number_format = "0.00"
+        cell_e.alignment = Alignment(horizontal="center")
+
+    # Ancho de columnas
+    ws.column_dimensions["A"].width = 22
+    ws.column_dimensions["B"].width = 14
+    ws.column_dimensions["C"].width = 10
+    ws.column_dimensions["D"].width = 10
+    ws.column_dimensions["E"].width = 18
+
+    buffer = io.BytesIO()
+    wb.save(buffer)
+    buffer.seek(0)
+
+    filename = f"asistencia_{ahora().strftime('%Y%m%d_%H%M')}.xlsx"
     await update.message.reply_document(
-        document=data,
+        document=buffer,
         filename=filename,
         caption=f"Reporte de asistencia - {len(records)} registros",
     )
@@ -229,6 +266,9 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # ---------- main ----------
 
 def main():
+    import asyncio
+    asyncio.set_event_loop(asyncio.new_event_loop())
+
     if not TOKEN:
         raise ValueError("Falta la variable de entorno TELEGRAM_TOKEN")
     if not ADMIN_IDS:

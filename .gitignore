@@ -3,3 +3,5 @@
 __pycache__/
 *.pyc
 .python-version
+*.log
+venv/
