@@ -285,28 +285,31 @@ with tab_emp:
             ("direccion_tecnica", "⚙️ Dirección Técnica"),
         ]
 
-        todas_filas = []
+        col_cfg = {
+            "Nombre":     st.column_config.TextColumn(width="large"),
+            "Turno":      st.column_config.TextColumn(width="small"),
+            "Registrado": st.column_config.TextColumn(width="small"),
+        }
         for cat_key, cat_label in secciones:
-            for emp in [e for e in empleados if e.get("categoria", "empleado") == cat_key]:
+            grupo = [e for e in empleados if e.get("categoria", "empleado") == cat_key]
+            if not grupo:
+                continue
+            st.subheader(cat_label)
+            filas = []
+            for emp in grupo:
                 shift = db.get_shift(emp["telegram_id"])
                 turno = f"{shift[0]:02d}:{shift[1]:02d} – {shift[2]:02d}:{shift[3]:02d}"
-                todas_filas.append({
-                    "Sección":   cat_label,
-                    "Nombre":    emp["name"],
-                    "Turno":     turno,
+                filas.append({
+                    "Nombre":     emp["name"],
+                    "Turno":      turno,
                     "Registrado": emp["registered_at"][:10],
                 })
-        st.dataframe(
-            pd.DataFrame(todas_filas),
-            use_container_width=True,
-            hide_index=True,
-            column_config={
-                "Sección":    st.column_config.TextColumn(width="medium"),
-                "Nombre":     st.column_config.TextColumn(width="large"),
-                "Turno":      st.column_config.TextColumn(width="small"),
-                "Registrado": st.column_config.TextColumn(width="small"),
-            }
-        )
+            st.dataframe(
+                pd.DataFrame(filas),
+                use_container_width=True,
+                hide_index=True,
+                column_config=col_cfg,
+            )
 
         st.divider()
         st.subheader("Últimos fichajes por empleado")
