@@ -11,8 +11,9 @@ from dotenv import load_dotenv
 load_dotenv(os.path.join(os.path.dirname(__file__), ".env"))
 sys.path.insert(0, os.path.dirname(__file__))
 
-from database import Database
-from reports  import build_xlsx, MESES_ES, ABSENCE_TYPES, calcular_horas
+from database   import Database
+from reports    import build_xlsx, MESES_ES, ABSENCE_TYPES, calcular_horas
+from pdf_report import build_pdf
 
 TIMEZONE = pytz.timezone("America/Argentina/Buenos_Aires")
 
@@ -221,24 +222,38 @@ with tab_rep:
             end_r   = st.date_input("Hasta", value=hoy)
             label_r = f"{start_r.strftime('%d/%m')} al {end_r.strftime('%d/%m/%Y')}"
 
-    if st.button("📥 Generar y descargar"):
-        with st.spinner("Generando reporte..."):
-            records  = db.get_records_by_period(start_r, end_r)
-            holidays = db.get_holidays(start_r, end_r)
-            absences = db.get_absences(start_r, end_r)
-            buf = build_xlsx(
-                db, records, f"Reporte {label_r}",
-                start_date=start_r, end_date=end_r,
-                holidays=holidays, absences=absences,
+    col_xlsx, col_pdf = st.columns(2)
+
+    with col_xlsx:
+        if st.button("📥 Generar Excel"):
+            with st.spinner("Generando Excel..."):
+                records  = db.get_records_by_period(start_r, end_r)
+                holidays = db.get_holidays(start_r, end_r)
+                absences = db.get_absences(start_r, end_r)
+                buf = build_xlsx(
+                    db, records, f"Reporte {label_r}",
+                    start_date=start_r, end_date=end_r,
+                    holidays=holidays, absences=absences,
+                )
+            filename = f"asistencia_{start_r.strftime('%Y%m%d')}_{end_r.strftime('%Y%m%d')}.xlsx"
+            st.download_button(
+                label="⬇️ Descargar Excel",
+                data=buf,
+                file_name=filename,
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
             )
-        filename = f"asistencia_{start_r.strftime('%Y%m%d')}_{end_r.strftime('%Y%m%d')}.xlsx"
-        st.download_button(
-            label="⬇️ Descargar Excel",
-            data=buf,
-            file_name=filename,
-            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        )
-        st.success(f"Reporte generado: {len(records)} registros")
+
+    with col_pdf:
+        if st.button("📄 Generar PDF"):
+            with st.spinner("Generando PDF..."):
+                buf_pdf = build_pdf(db, start_r, end_r, f"Reporte {label_r}")
+            filename_pdf = f"asistencia_{start_r.strftime('%Y%m%d')}_{end_r.strftime('%Y%m%d')}.pdf"
+            st.download_button(
+                label="⬇️ Descargar PDF",
+                data=buf_pdf,
+                file_name=filename_pdf,
+                mime="application/pdf",
+            )
 
     st.divider()
     st.subheader("Estadísticas rápidas del mes")
