@@ -560,12 +560,41 @@ with tab_normas:
     ]), use_container_width=True, hide_index=True)
 
     st.divider()
-    st.subheader("Cómo fichar")
+    st.subheader("Cómo fichar — galpón")
     col1, col2 = st.columns(2)
     with col1:
-        st.markdown("**Entrada** — escribir o decir por audio:")
+        st.markdown("**Entrada al galpón** — escribir o audio:")
         st.code("llegué · entré · entre · presente\narranqué · arranco · inicio · entro")
     with col2:
-        st.markdown("**Salida** — escribir o decir por audio:")
+        st.markdown("**Salida del galpón** — escribir o audio:")
         st.code("me voy · salgo · salí · sali\nlisto · terminé · ya está · fin")
-    st.caption("El bot de Telegram también acepta mensajes de voz. Funciona igual que el texto.")
+    st.caption("El bot de Telegram acepta texto y mensajes de voz. Funcionan igual.")
+
+    st.divider()
+    st.subheader("Cómo registrar horas en obra")
+    col1, col2 = st.columns(2)
+    with col1:
+        st.markdown("**Llegada a la obra** — escribir o audio:")
+        st.code("en obra · inicio obra · entro obra\narranqué obra · llegué obra")
+        st.caption("El bot muestra los botones de obras activas para seleccionar.")
+    with col2:
+        st.markdown("**Salida de la obra** — escribir o audio:")
+        st.code("salgo de obra · fin obra\ntermino obra · me voy de obra")
+    st.info("El registro de obra es independiente del fichaje del galpón. Un empleado puede hacer ambos el mismo día.")
+
+    st.divider()
+    st.subheader("Geolocalización — solo Empleados")
+    st.dataframe(pd.DataFrame([
+        {"Quiénes": "👷 Demetrio, Gustavo, Matias", "Requisito": "Deben compartir ubicación para fichar entrada y salida"},
+        {"Quiénes": "💼 Administración / ⚙️ Dirección Técnica", "Requisito": "Fichan directamente con texto o voz, sin ubicación"},
+    ]), use_container_width=True, hide_index=True)
+    st.caption("Cómo compartir la ubicación en Telegram: tocá el clip 📎 → Ubicación → Enviar mi ubicación actual.")
+
+    st.divider()
+    st.subheader("¿Olvidaste fichar o hay un error?")
+    st.dataframe(pd.DataFrame([
+        {"Situación": "Olvidé registrar entrada",      "Solución": "Avisarle al administrador → /corregir Nombre entrada HH:MM DD/MM"},
+        {"Situación": "Olvidé registrar salida",       "Solución": "Avisarle al administrador → /corregir Nombre salida HH:MM DD/MM"},
+        {"Situación": "Registré hora incorrecta",      "Solución": "Avisarle al administrador → /corregir Nombre entrada/salida HH:MM DD/MM"},
+        {"Situación": "Quiero ver mis últimos fichajes","Solución": "Escribir /estado en el bot"},
+    ]), use_container_width=True, hide_index=True)
