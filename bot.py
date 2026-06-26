@@ -366,6 +366,29 @@ async def cmd_reporte(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(f"Reporte también enviado a {email_to}")
 
 
+async def cmd_ayuda(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text(
+        "*Comandos disponibles*\n"
+        "\n"
+        "Podés escribir o mandar un audio de voz:\n"
+        "\n"
+        "Para registrar *entrada*:\n"
+        "  llegué · entré · entre · presente\n"
+        "  arranqué · arranco · inicio · entro · /entro\n"
+        "\n"
+        "Para registrar *salida*:\n"
+        "  me voy · salgo · salí · sali\n"
+        "  listo · terminé · ya está · fin · /salgo\n"
+        "\n"
+        "Para ver tu estado de hoy:\n"
+        "  /estado\n"
+        "\n"
+        "_Podés entrar y salir varias veces en el día._\n"
+        "_Cualquier duda hablá con tu administrador._",
+        parse_mode="Markdown",
+    )
+
+
 async def cmd_empleados(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     if not es_admin(user.id):
@@ -387,10 +410,20 @@ async def cmd_empleados(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 _whisper_model = None
+_FFMPEG_PATH   = (
+    r"C:\Users\Lucio\AppData\Local\Microsoft\WinGet\Packages"
+    r"\Gyan.FFmpeg_Microsoft.Winget.Source_8wekyb3d8bbwe"
+    r"\ffmpeg-8.1.1-full_build\bin"
+)
+
 
 def _get_whisper():
     global _whisper_model
     if _whisper_model is None:
+        # Asegurar que ffmpeg esté en el PATH para este proceso
+        import sys as _sys
+        if _FFMPEG_PATH not in os.environ.get("PATH", ""):
+            os.environ["PATH"] = _FFMPEG_PATH + os.pathsep + os.environ.get("PATH", "")
         import whisper as _w
         _whisper_model = _w.load_model("base")
     return _whisper_model
@@ -406,7 +439,7 @@ async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await _pedir_nombre(update, context)
         return
 
-    await update.message.reply_text("Escuchando...")
+    msg_espera = await update.message.reply_text("Escuchando...")
 
     import tempfile
     voz   = update.message.voice
@@ -420,6 +453,12 @@ async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
         model  = _get_whisper()
         result = model.transcribe(tmp_path, language="es", fp16=False)
         texto  = result["text"].strip().lower()
+
+        # Eliminar el mensaje "Escuchando..." antes de responder
+        try:
+            await msg_espera.delete()
+        except Exception:
+            pass
 
         if any(p in texto for p in PALABRAS_ENTRADA):
             await _hacer_entro(update, context)
@@ -438,12 +477,20 @@ async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 "  me voy · salgo · salí · sali\n"
                 "  listo · terminé · ya está · fin"
             )
-    except Exception as e:
+    except Exception:
+        try:
+            await msg_espera.delete()
+        except Exception:
+            pass
         await update.message.reply_text(
-            "No pude procesar el audio. Escribí el comando directamente."
+            "No pude procesar el audio.\n"
+            "Escribí el comando directamente o intentá con el micrófono más cerca."
         )
     finally:
-        os.remove(tmp_path)
+        try:
+            os.remove(tmp_path)
+        except Exception:
+            pass
 
 
 async def handle_location(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -1138,6 +1185,8 @@ def main():
     app = Application.builder().token(TOKEN).build()
 
     app.add_handler(CommandHandler("start",        cmd_start))
+    app.add_handler(CommandHandler("ayuda",        cmd_ayuda))
+    app.add_handler(CommandHandler("help",         cmd_ayuda))
     app.add_handler(CommandHandler("entro",        cmd_entro))
     app.add_handler(CommandHandler("salgo",        cmd_salgo))
     app.add_handler(CommandHandler("estado",       cmd_estado))
