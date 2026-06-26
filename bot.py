@@ -113,26 +113,25 @@ async def _guardar_nombre(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     db.register_employee(update.effective_user.id, name)
     context.user_data[AWAITING_NAME] = False
     await update.message.reply_text(
-        f"*Bienvenido/a, {name}!*\n"
-        f"Ya estás registrado en el sistema de asistencia.\n"
+        f"*¡Bienvenido/a, {name}!* Ya estás registrado en 2H Movimiento de Suelos.\n"
         f"\n"
-        f"*Podés escribir o mandar un audio de voz — funciona igual.*\n"
+        f"*Podés escribir o mandar un audio de voz — funcionan igual.*\n"
         f"\n"
-        f"Al llegar al galpón:\n"
-        f"  › llegué · entré · presente · arranqué\n"
+        f"━━━ GALPÓN ━━━\n"
+        f"Entrada: *llegué · entré · arranqué*\n"
+        f"Salida:  *me voy · salgo · terminé*\n"
         f"\n"
-        f"Al irte del galpón:\n"
-        f"  › me voy · salgo · listo · terminé\n"
+        f"━━━ OBRA ━━━\n"
+        f"Llegada a obra: *en obra · inicio obra*\n"
+        f"Salida de obra: *salgo de obra · fin obra*\n"
+        f"_(El bot te muestra los botones de obras para elegir)_\n"
         f"\n"
-        f"Al llegar a una obra:\n"
-        f"  › en obra · inicio obra · entro obra\n"
+        f"━━━ IMPORTANTE ━━━\n"
+        f"📍 Si el bot te pide ubicación, compartila antes de fichar.\n"
+        f"⏰ Recibís avisos a las 07:00 (entrada) y 16:00 (salida).\n"
+        f"❓ Si olvidaste fichar, avisale al administrador.\n"
         f"\n"
-        f"Al salir de la obra:\n"
-        f"  › salgo de obra · fin obra · termino obra\n"
-        f"\n"
-        f"Para ver tu estado: /estado\n"
-        f"\n"
-        f"_Cualquier duda hablá con tu administrador._",
+        f"Escribí /ayuda en cualquier momento para ver esta guía de nuevo.",
         parse_mode="Markdown",
     )
     return True
