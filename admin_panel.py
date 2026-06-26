@@ -39,63 +39,97 @@ st.markdown("""
   #MainMenu { visibility: hidden; }
   footer    { visibility: hidden; }
 
-  /* Métricas estilo dashboard oscuro */
+  /* ── Métricas tipo Dashcube ── */
   div[data-testid="stMetric"] {
-    background: #2C2C28;
-    border-radius: 10px;
-    padding: 16px 20px;
-    border-left: 3px solid #E8E800;
+    background: #242421;
+    border-radius: 12px;
+    padding: 20px 24px;
+    border: 1px solid rgba(232,232,0,0.12);
   }
   div[data-testid="stMetric"] label {
     color: #ECEFCA !important;
-    opacity: 0.7;
-    font-size: 12px;
+    opacity: 0.5;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: .06em;
   }
   div[data-testid="stMetric"] [data-testid="stMetricValue"] {
     color: #ECEFCA !important;
-    font-size: 28px;
+    font-size: 32px;
     font-weight: 700;
+    line-height: 1.1;
   }
 
-  /* Tabs estilo oscuro con acento amarillo */
+  /* ── Tabs ── */
   .stTabs [data-baseweb="tab-list"] {
-    background: #2C2C28;
-    border-radius: 8px;
-    padding: 4px;
-    gap: 4px;
+    background: transparent;
+    border-bottom: 1px solid rgba(236,239,202,0.1);
+    gap: 8px;
+    padding-bottom: 0;
   }
   .stTabs [data-baseweb="tab"] {
-    border-radius: 6px;
     color: #ECEFCA !important;
-    opacity: 0.6;
+    opacity: 0.45;
+    font-size: 13px;
+    padding-bottom: 10px;
+    border-bottom: 2px solid transparent;
+    border-radius: 0;
+    background: transparent !important;
   }
   .stTabs [aria-selected="true"] {
-    background: #E8E800 !important;
-    color: #1E1E1B !important;
     opacity: 1 !important;
+    color: #E8E800 !important;
+    border-bottom: 2px solid #E8E800 !important;
+    background: transparent !important;
     font-weight: 600;
   }
 
-  /* Dataframes */
-  .stDataFrame { border-radius: 10px; overflow: hidden; }
-
-  /* Expanders */
+  /* ── Expanders ── */
   .streamlit-expanderHeader {
-    background: #2C2C28 !important;
-    border-radius: 8px;
+    background: #242421 !important;
+    border: 1px solid rgba(236,239,202,0.08) !important;
+    border-radius: 10px !important;
   }
 
-  /* Header */
+  /* ── DataFrames ── */
+  .stDataFrame { border-radius: 10px; overflow: hidden; }
+
+  /* ── Inputs y selects ── */
+  .stTextInput input, .stSelectbox select {
+    background: #242421 !important;
+    border: 1px solid rgba(236,239,202,0.15) !important;
+    border-radius: 8px !important;
+  }
+
+  /* ── Botones ── */
+  .stButton > button {
+    border-radius: 8px !important;
+    font-weight: 600;
+    letter-spacing: .02em;
+  }
+
+  /* ── Header 2H ── */
   .header-2h {
     display: flex;
     align-items: center;
     gap: 16px;
-    padding: 12px 0 16px;
-    border-bottom: 2px solid #E8E800;
-    margin-bottom: 20px;
+    padding: 10px 0 18px;
+    border-bottom: 1px solid rgba(232,232,0,0.25);
+    margin-bottom: 24px;
   }
-  .header-title { font-size: 22px; font-weight: 700; color: #ECEFCA; line-height: 1.2; }
-  .header-sub   { font-size: 11px; color: #ECEFCA; opacity: 0.5; margin-top: 3px; }
+  .header-title {
+    font-size: 20px;
+    font-weight: 700;
+    color: #ECEFCA;
+    letter-spacing: -0.3px;
+  }
+  .header-sub {
+    font-size: 11px;
+    color: #ECEFCA;
+    opacity: 0.4;
+    margin-top: 3px;
+    letter-spacing: .03em;
+  }
 </style>
 """, unsafe_allow_html=True)
 
