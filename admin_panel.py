@@ -402,13 +402,20 @@ with tab_rep:
     recs  = db.get_records_by_period(start, hoy)
 
     if recs:
-        df = pd.DataFrame([{
-            "Empleado": r["name"],
-            "Horas":    round(r["total_hours"] or 0, 2),
-        } for r in recs if r.get("total_hours")])
+        filas_mes = []
+        for r in recs:
+            hs = 0.0
+            for s in r.get("sessions", [r]):
+                if s.get("entry_time") and s.get("exit_time"):
+                    d = date.fromisoformat(r["date"])
+                    is_h = bool(db.is_holiday(d))
+                    n, e50, e100 = calcular_horas(s["entry_time"], s["exit_time"], d.weekday(), is_h)
+                    hs += n + e50 + e100
+            if hs > 0:
+                filas_mes.append({"Empleado": r["name"], "Horas": round(hs, 2)})
 
-        if not df.empty:
-            resumen = df.groupby("Empleado")["Horas"].sum().reset_index()
+        if filas_mes:
+            resumen = pd.DataFrame(filas_mes).groupby("Empleado")["Horas"].sum().reset_index()
             resumen.columns = ["Empleado", "Total Horas del Mes"]
             st.dataframe(resumen, use_container_width=True, hide_index=True)
     else:
