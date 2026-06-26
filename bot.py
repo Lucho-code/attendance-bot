@@ -1133,6 +1133,26 @@ async def job_aviso_entrada(context: CallbackContext):
             pass
 
 
+async def job_aviso_inicio_jornada(context: CallbackContext):
+    """07:00 — recuerda a todos los empleados que registren su entrada."""
+    hoy = ahora().date()
+    if hoy.weekday() >= 5 or db.is_holiday(hoy):
+        return
+
+    for emp in db.list_employees():
+        try:
+            await context.bot.send_message(
+                chat_id=emp["telegram_id"],
+                text=(
+                    "Buenos días! Son las 07:00.\n"
+                    "No olvidés registrar tu entrada.\n"
+                    "Escribí \"llegué\" o \"entre\"."
+                ),
+            )
+        except Exception:
+            pass
+
+
 async def job_aviso_corte_jornada(context: CallbackContext):
     """16:00 — avisa a empleados que es hora de registrar la salida (fin de jornada normal)."""
     hoy = ahora().date()
@@ -1434,6 +1454,8 @@ def main():
     # Avisos de entrada: cada hora entre 09:00 y 12:00, respeta turnos individuales
     for h in (9, 10, 11, 12):
         jq.run_daily(job_aviso_entrada, time=dt_time(hour=h, minute=0, tzinfo=TIMEZONE))
+    # Aviso de inicio de jornada a las 07:00
+    jq.run_daily(job_aviso_inicio_jornada, time=dt_time(hour=7, minute=0, tzinfo=TIMEZONE))
     # Aviso de corte de jornada normal a las 16:00
     jq.run_daily(job_aviso_corte_jornada, time=dt_time(hour=16, minute=0, tzinfo=TIMEZONE))
     # Aviso de salida pendiente a las 18:30 (recordatorio tardío)
