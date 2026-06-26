@@ -58,15 +58,16 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# Header con logo 2H
+# Header con logo 2H real
+import base64, pathlib
+_logo_path = pathlib.Path(__file__).parent / "logo_2h.png"
+_logo_b64  = base64.b64encode(_logo_path.read_bytes()).decode() if _logo_path.exists() else ""
+_logo_html = (f'<img src="data:image/png;base64,{_logo_b64}" width="56" height="56" '
+              f'style="border-radius:50%;">' if _logo_b64 else "")
+
 st.markdown(f"""
 <div class="header-2h">
-  <svg viewBox="0 0 100 100" width="56" height="56" xmlns="http://www.w3.org/2000/svg">
-    <circle cx="50" cy="50" r="50" fill="#737869"/>
-    <text x="50" y="66" font-size="44" font-weight="300"
-          text-anchor="middle" fill="#ECEFCA"
-          font-family="'Segoe UI', Arial, sans-serif" letter-spacing="-2">2H</text>
-  </svg>
+  {_logo_html}
   <div>
     <div class="header-title">2H Mov. Suelos &nbsp;<span style="color:#E8E800;">|</span>&nbsp; Panel de Control</div>
     <div class="header-sub">Actualizado: {ahora().strftime('%d/%m/%Y  %H:%M')}</div>
