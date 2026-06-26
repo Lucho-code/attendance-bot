@@ -450,9 +450,16 @@ async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     try:
         await vfile.download_to_drive(tmp_path)
-        model  = _get_whisper()
-        result = model.transcribe(tmp_path, language="es", fp16=False)
-        texto  = result["text"].strip().lower()
+
+        # Correr Whisper en un hilo para no bloquear el event loop
+        import asyncio, functools
+        loop  = asyncio.get_event_loop()
+        model = _get_whisper()
+        result = await loop.run_in_executor(
+            None,
+            functools.partial(model.transcribe, tmp_path, language="es", fp16=False)
+        )
+        texto = result["text"].strip().lower()
 
         # Eliminar el mensaje "Escuchando..." antes de responder
         try:
@@ -1182,7 +1189,12 @@ def main():
     if not ADMIN_IDS:
         print("ADVERTENCIA: ADMIN_IDS no configurado. Nadie podrá descargar reportes.")
 
-    app = Application.builder().token(TOKEN).build()
+    app = (Application.builder()
+           .token(TOKEN)
+           .read_timeout(120)
+           .write_timeout(120)
+           .connect_timeout(30)
+           .build())
 
     app.add_handler(CommandHandler("start",        cmd_start))
     app.add_handler(CommandHandler("ayuda",        cmd_ayuda))
