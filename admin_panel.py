@@ -32,7 +32,7 @@ st.set_page_config(
     layout="wide",
 )
 
-st.title("2H Mov. Suelos — Panel de Asistencia")
+st.title("2H Mov. Suelos — Panel de Control")
 st.caption(f"Actualizado: {ahora().strftime('%d/%m/%Y  %H:%M')}")
 
 tab_hoy, tab_emp, tab_rep, tab_obras, tab_normas = st.tabs(["📅 Hoy", "👥 Empleados", "📊 Reportes", "🏗️ Obras", "📋 Normas"])
