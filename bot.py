@@ -903,16 +903,22 @@ def _check_and_restore_db() -> str | None:
     if not necesita:
         return None
 
-    # Primero buscar la copia en tiempo real (siempre la más actualizada)
-    live_backup = os.path.join(os.path.expanduser("~"), "OneDrive", "FichaYA", "attendance_live.db")
+    # Primero buscar copias en tiempo real (OneDrive y Google Drive)
+    live_candidates = [
+        os.path.join(os.path.expanduser("~"), "OneDrive", "FichaYA", "attendance_live.db"),
+        r"G:\Mi unidad\FichaYA\attendance_live.db",
+    ]
 
     mejor = None
     mejor_mtime = 0.0
 
-    if os.path.exists(live_backup):
-        mejor       = live_backup
-        mejor_mtime = os.path.getmtime(live_backup)
-        print(f"Copia en tiempo real encontrada: {live_backup}")
+    for live in live_candidates:
+        if os.path.exists(live):
+            mt = os.path.getmtime(live)
+            if mt > mejor_mtime:
+                mejor       = live
+                mejor_mtime = mt
+                print(f"Copia en tiempo real encontrada: {live}")
 
     # Luego buscar en los directorios de backup por si hay algo más nuevo
     backup_dirs = [

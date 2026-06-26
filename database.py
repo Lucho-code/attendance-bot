@@ -8,20 +8,22 @@ import pytz
 TIMEZONE  = pytz.timezone("America/Argentina/Buenos_Aires")
 DB_PATH   = os.getenv("DB_PATH", "attendance.db")
 
-# Carpeta de copia en tiempo real (OneDrive local = instantáneo)
-_LIVE_BACKUP_PATH = os.path.join(
-    os.path.expanduser("~"), "OneDrive", "FichaYA", "attendance_live.db"
-)
+# Destinos de copia en tiempo real (carpetas locales sincronizadas a la nube)
+_LIVE_DESTINATIONS = [
+    os.path.join(os.path.expanduser("~"), "OneDrive", "FichaYA", "attendance_live.db"),
+    r"G:\Mi unidad\FichaYA\attendance_live.db",
+]
 
 
 def _backup_live():
-    """Copia la DB a OneDrive en un hilo secundario. Silencioso si falla."""
+    """Copia la DB a OneDrive y Google Drive en un hilo secundario. Silencioso si falla."""
     def _copy():
-        try:
-            os.makedirs(os.path.dirname(_LIVE_BACKUP_PATH), exist_ok=True)
-            shutil.copy2(DB_PATH, _LIVE_BACKUP_PATH)
-        except Exception:
-            pass
+        for dest in _LIVE_DESTINATIONS:
+            try:
+                os.makedirs(os.path.dirname(dest), exist_ok=True)
+                shutil.copy2(DB_PATH, dest)
+            except Exception:
+                pass
     threading.Thread(target=_copy, daemon=True).start()
 
 FERIADOS_2026 = [
