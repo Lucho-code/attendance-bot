@@ -32,18 +32,19 @@ st.set_page_config(
     layout="wide",
 )
 
-st.title("Panel de Asistencia")
+st.title("2H Mov. Suelos — Panel de Asistencia")
 st.caption(f"Actualizado: {ahora().strftime('%d/%m/%Y  %H:%M')}")
 
 tab_hoy, tab_emp, tab_rep = st.tabs(["📅 Hoy", "👥 Empleados", "📊 Reportes"])
 
-# ── TAB 1: Estado de hoy ──────────────────────────────────────────────────────
-with tab_hoy:
+# ── TAB 1: Estado de hoy (auto-refresca cada 30 seg) ─────────────────────────
+@st.fragment(run_every=30)
+def tab_hoy_content():
     hoy       = ahora().date()
     empleados = db.list_employees()
 
     rows = []
-    presentes = ausentes = sin_salida = 0
+    presentes = ausentes = sin_salida = salieron = 0
 
     for emp in empleados:
         st_hoy = db.get_today_status(emp["telegram_id"], hoy)
@@ -54,13 +55,13 @@ with tab_hoy:
             estado    = "🟢 Dentro"
             presentes += 1
         elif st_hoy and st_hoy.get("exit_time"):
-            estado    = "🔵 Salió"
-            sin_salida = sin_salida  # no change
+            estado   = "🔵 Salió"
+            salieron += 1
         elif not st_hoy:
             estado   = "🔴 Sin registro"
             ausentes += 1
         else:
-            estado = "🟡 Sin salida"
+            estado     = "🟡 Sin salida"
             sin_salida += 1
 
         ent = st_hoy["entry_time"].strftime("%H:%M") if st_hoy and st_hoy.get("entry_time") else "–"
@@ -76,7 +77,7 @@ with tab_hoy:
             e100 = f"{ex100:.2f}" if ex100 > 0 else "–"
 
         rows.append({
-            "Empleado":     emp["name"],
+            "Empleado 2H Mov. Suelos": emp["name"],
             "Turno":        turno,
             "Estado":       estado,
             "Entrada":      ent,
@@ -101,10 +102,10 @@ with tab_hoy:
             "Estado": st.column_config.TextColumn(width="medium"),
         },
     )
+    st.caption(f"Actualizado: {ahora().strftime('%H:%M:%S')} · refresca cada 30 seg")
 
-    if st.button("🔄 Actualizar"):
-        st.cache_resource.clear()
-        st.rerun()
+with tab_hoy:
+    tab_hoy_content()
 
 # ── TAB 2: Empleados ──────────────────────────────────────────────────────────
 with tab_emp:
@@ -116,7 +117,7 @@ with tab_emp:
         for emp in empleados:
             shift = db.get_shift(emp["telegram_id"])
             rows_emp.append({
-                "Empleado":    emp["name"],
+                "Empleado 2H Mov. Suelos": emp["name"],
                 "Turno entr.": f"{shift[0]:02d}:{shift[1]:02d}",
                 "Turno sal.":  f"{shift[2]:02d}:{shift[3]:02d}",
                 "ID Telegram": emp["telegram_id"],
