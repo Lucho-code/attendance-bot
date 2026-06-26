@@ -157,8 +157,14 @@ async def _hacer_entro(update: Update, context: ContextTypes.DEFAULT_TYPE = None
                           bool(OFFICE_LAT and OFFICE_LON) and not ubicacion_verificada)
     if necesita_ubicacion:
         await update.message.reply_text(
-            "Para registrar entrada compartí tu ubicación.\n"
-            "Tocá el clip > Ubicación > Compartir ubicación."
+            "Para registrar la entrada necesito verificar tu ubicación.\n"
+            "\n"
+            "Cómo compartirla:\n"
+            "1. Tocá el ícono del clip 📎 (abajo a la izquierda)\n"
+            "2. Seleccioná Ubicación\n"
+            "3. Tocá Enviar mi ubicación actual\n"
+            "\n"
+            "El sistema verifica que estés en el lugar de trabajo y registra la entrada automáticamente."
         )
         return
 
@@ -201,8 +207,14 @@ async def _hacer_salgo(update: Update, context: ContextTypes.DEFAULT_TYPE = None
                            bool(OFFICE_LAT and OFFICE_LON) and not ubicacion_verificada)
     if necesita_ubicacion2:
         await update.message.reply_text(
-            "Para registrar salida compartí tu ubicación.\n"
-            "Tocá el clip > Ubicación > Compartir ubicación."
+            "Para registrar la salida necesito verificar tu ubicación.\n"
+            "\n"
+            "Cómo compartirla:\n"
+            "1. Tocá el ícono del clip 📎 (abajo a la izquierda)\n"
+            "2. Seleccioná Ubicación\n"
+            "3. Tocá Enviar mi ubicación actual\n"
+            "\n"
+            "El sistema verifica que estés en el lugar de trabajo y registra la salida automáticamente."
         )
         return
 
