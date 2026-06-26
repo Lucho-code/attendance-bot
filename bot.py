@@ -106,19 +106,15 @@ async def _guardar_nombre(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         f"*Bienvenido/a, {name}!*\n"
         f"Ya estás registrado en el sistema de asistencia.\n"
         f"\n"
-        f"*Cómo usarlo:*\n"
+        f"*Podés escribir o mandar un audio de voz — funciona igual.*\n"
         f"\n"
-        f"Al llegar, escribí cualquiera de estas frases:\n"
-        f"  › llegué\n"
-        f"  › entro\n"
-        f"  › buenos días\n"
-        f"  › /entro\n"
+        f"Al llegar, escribí o decí alguna de estas:\n"
+        f"  › llegué · entré · entre · presente\n"
+        f"  › arranqué · arranco · inicio · entro\n"
         f"\n"
-        f"Al irte, escribí cualquiera de estas:\n"
-        f"  › me voy\n"
-        f"  › salgo\n"
-        f"  › chau\n"
-        f"  › /salgo\n"
+        f"Al irte, escribí o decí alguna de estas:\n"
+        f"  › me voy · salgo · salí · sali\n"
+        f"  › listo · terminé · ya está · fin\n"
         f"\n"
         f"Para ver cómo vas hoy:\n"
         f"  › /estado\n"
@@ -377,9 +373,15 @@ async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
         else:
             await update.message.reply_text(
                 f'Escuché: "{texto}"\n\n'
-                "No reconocí el comando. Decí claramente:\n"
-                "  Entrada: llegué · entré · arranqué\n"
-                "  Salida:  me voy · salí · terminé"
+                "No reconocí el comando. Probá decir:\n"
+                "\n"
+                "Entrada:\n"
+                "  llegué · entré · entre · presente\n"
+                "  arranqué · arranco · inicio · entro\n"
+                "\n"
+                "Salida:\n"
+                "  me voy · salgo · salí · sali\n"
+                "  listo · terminé · ya está · fin"
             )
     except Exception as e:
         await update.message.reply_text(
@@ -660,17 +662,15 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await _hacer_salgo(update, context)
     else:
         await update.message.reply_text(
-            "No te entendí. Para registrar:\n"
+            "No te entendí. Podés escribir o mandar un audio de voz:\n"
             "\n"
-            "Entrada — escribí alguna de estas:\n"
-            "  llegué · presente · arranqué · arranco\n"
-            "  arrancando · estoy · empecé · inicio\n"
-            "  check in · entrada · /entro\n"
+            "Entrada:\n"
+            "  llegué · entré · entre · presente\n"
+            "  arranqué · arranco · inicio · entro\n"
             "\n"
-            "Salida — escribí alguna de estas:\n"
-            "  me voy · salgo · sali · saliendo\n"
-            "  listo · terminé · ya está · fin\n"
-            "  checkout · /salgo"
+            "Salida:\n"
+            "  me voy · salgo · salí · sali\n"
+            "  listo · terminé · ya está · fin"
         )
 
 
