@@ -221,9 +221,9 @@ def tab_hoy_content():
     cat_map = {e["name"]: e.get("categoria", "empleado") for e in empleados}
 
     secciones = [
-        ("empleado",          "Empleados"),
-        ("administracion",    "Administración"),
-        ("direccion_tecnica", "Dirección Técnica"),
+        ("empleado",          "👷 Empleados"),
+        ("administracion",    "💼 Administración"),
+        ("direccion_tecnica", "⚙️ Dirección Técnica"),
     ]
 
     col_key = "Empleado 2H Mov. Suelos"
