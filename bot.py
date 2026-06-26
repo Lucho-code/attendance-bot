@@ -870,7 +870,67 @@ async def job_quincena(context: CallbackContext):
 
 # ---------- main ----------
 
-_INSTANCE_LOCK = None   # mantiene el socket vivo durante toda la ejecución
+_INSTANCE_LOCK    = None
+_RESTORED_BACKUP  = None   # ruta del backup usado si hubo auto-restauración
+
+
+def _check_and_restore_db() -> str | None:
+    """
+    Verifica integridad de la DB al arrancar.
+    Si está corrupta o falta, restaura desde el backup más reciente
+    entre los tres destinos configurados.
+    Devuelve la ruta del backup usado, o None si no fue necesario.
+    """
+    import sqlite3
+    db_path   = os.getenv("DB_PATH", "attendance.db")
+    necesita  = False
+
+    if not os.path.exists(db_path):
+        necesita = True
+        print("DB no encontrada — buscando backup...")
+    else:
+        try:
+            con = sqlite3.connect(db_path, timeout=5)
+            ok  = con.execute("PRAGMA integrity_check").fetchone()[0]
+            con.close()
+            if ok != "ok":
+                necesita = True
+                print(f"DB corrupta ({ok}) — buscando backup...")
+        except Exception as e:
+            necesita = True
+            print(f"Error al abrir DB ({e}) — buscando backup...")
+
+    if not necesita:
+        return None
+
+    backup_dirs = [
+        os.path.join(os.path.dirname(os.path.abspath(db_path)), "backups"),
+        os.path.join(os.path.expanduser("~"), "OneDrive", "FichaYA", "backups"),
+        r"G:\Mi unidad\FichaYA\backups",
+    ]
+
+    mejor = None
+    mejor_mtime = 0.0
+
+    for d in backup_dirs:
+        if not os.path.isdir(d):
+            continue
+        for fname in sorted(os.listdir(d), reverse=True):
+            if fname.endswith(".db"):
+                fpath = os.path.join(d, fname)
+                mt    = os.path.getmtime(fpath)
+                if mt > mejor_mtime:
+                    mejor       = fpath
+                    mejor_mtime = mt
+                break   # solo el más reciente de cada directorio
+
+    if not mejor:
+        print("No se encontró ningún backup. El sistema iniciará con DB vacía.")
+        return None
+
+    shutil.copy2(mejor, db_path)
+    print(f"DB restaurada desde: {mejor}")
+    return mejor
 
 def _verificar_instancia_unica():
     """Usa un socket como lock. Si ya hay un bot corriendo, esta instancia sale sin error."""
@@ -886,8 +946,11 @@ def _verificar_instancia_unica():
 
 
 def main():
-    import asyncio
+    import asyncio, sys
+    global _RESTORED_BACKUP
+
     _verificar_instancia_unica()
+    _RESTORED_BACKUP = _check_and_restore_db()
     asyncio.set_event_loop(asyncio.new_event_loop())
 
     if not TOKEN:
@@ -927,6 +990,19 @@ def main():
     jq.run_daily(job_backup,       time=dt_time(hour=23, minute=0,  tzinfo=TIMEZONE))
     # Confirmación de vida a las 08:00
     jq.run_daily(job_alive,        time=dt_time(hour=8,  minute=0,  tzinfo=TIMEZONE))
+
+    # Si hubo auto-restauración, notificar al admin en cuanto conecte
+    if _RESTORED_BACKUP:
+        async def _notificar_restauracion(ctx: CallbackContext):
+            texto = (
+                f"Base de datos restaurada automaticamente al iniciar.\n"
+                f"Backup usado: {os.path.basename(_RESTORED_BACKUP)}\n"
+                f"Ubicacion: {_RESTORED_BACKUP}\n\n"
+                f"El sistema funciona con los datos del ultimo backup guardado."
+            )
+            for admin_id in ADMIN_IDS:
+                await ctx.bot.send_message(chat_id=admin_id, text=texto)
+        jq.run_once(_notificar_restauracion, when=5)
 
     print("Bot iniciado. Esperando mensajes...")
     app.run_polling(drop_pending_updates=True)
