@@ -107,14 +107,34 @@ def tab_hoy_content():
     col_key = "Empleado 2H Mov. Suelos"
     for cat_key, cat_label in secciones:
         filas = [r for r in rows if cat_map.get(r[col_key]) == cat_key]
-        if filas:
-            st.subheader(cat_label)
-            st.dataframe(
-                pd.DataFrame(filas),
-                use_container_width=True,
-                hide_index=True,
-                column_config={"Estado": st.column_config.TextColumn(width="medium")},
-            )
+        if not filas:
+            continue
+        st.subheader(cat_label)
+        st.dataframe(
+            pd.DataFrame(filas),
+            use_container_width=True,
+            hide_index=True,
+            column_config={"Estado": st.column_config.TextColumn(width="medium")},
+        )
+
+        # Detalle de sesiones para Administración y Dirección Técnica
+        if cat_key in ("administracion", "direccion_tecnica"):
+            for emp in [e for e in empleados if e.get("categoria", "empleado") == cat_key]:
+                sesiones = db.get_daily_sessions(emp["telegram_id"], hoy)
+                if len(sesiones) > 1:
+                    with st.expander(f"  {emp['name']} — {len(sesiones)} sesiones hoy"):
+                        ses_rows = []
+                        for i, s in enumerate(sesiones, 1):
+                            ent = s["entry_time"].strftime("%H:%M") if s.get("entry_time") else "–"
+                            sal = s["exit_time"].strftime("%H:%M")  if s.get("exit_time")  else "Abierta"
+                            hs  = f"{s['total_hours']:.2f}"         if s.get("total_hours") else "–"
+                            ses_rows.append({
+                                "Sesión": f"#{i}",
+                                "Entrada": ent,
+                                "Salida":  sal,
+                                "Horas":   hs,
+                            })
+                        st.dataframe(pd.DataFrame(ses_rows), use_container_width=True, hide_index=True)
 
     st.caption(f"Actualizado: {ahora().strftime('%H:%M:%S')} · refresca cada 30 seg")
 
