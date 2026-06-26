@@ -986,8 +986,9 @@ def main():
         jq.run_daily(job_aviso_entrada, time=dt_time(hour=h, minute=0, tzinfo=TIMEZONE))
     # Aviso de salida pendiente a las 18:30
     jq.run_daily(job_aviso_salida, time=dt_time(hour=18, minute=30, tzinfo=TIMEZONE))
-    # Backup diario a las 23:00
-    jq.run_daily(job_backup,       time=dt_time(hour=23, minute=0,  tzinfo=TIMEZONE))
+    # Backup cada 4 horas: 07:00, 11:00, 15:00, 19:00, 23:00
+    for _h in (7, 11, 15, 19, 23):
+        jq.run_daily(job_backup, time=dt_time(hour=_h, minute=0, tzinfo=TIMEZONE))
     # Confirmación de vida a las 08:00
     jq.run_daily(job_alive,        time=dt_time(hour=8,  minute=0,  tzinfo=TIMEZONE))
 
