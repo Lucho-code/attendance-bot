@@ -227,13 +227,18 @@ def tab_hoy_content():
     ]
 
     col_key = "Empleado 2H Mov. Suelos"
+    cols_empleados = ["Empleado 2H Mov. Suelos", "Turno", "Estado",
+                      "Entrada", "Salida", "Hs. Normales", "Extra 50%", "Extra 100%"]
+    cols_otros     = ["Empleado 2H Mov. Suelos", "Turno", "Estado", "Entrada", "Salida"]
+
     for cat_key, cat_label in secciones:
         filas = [r for r in rows if cat_map.get(r[col_key]) == cat_key]
         if not filas:
             continue
         st.subheader(cat_label)
+        cols = cols_empleados if cat_key == "empleado" else cols_otros
         st.dataframe(
-            pd.DataFrame(filas),
+            pd.DataFrame(filas)[cols],
             use_container_width=True,
             hide_index=True,
             column_config={"Estado": st.column_config.TextColumn(width="medium")},
