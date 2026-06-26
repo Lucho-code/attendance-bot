@@ -127,21 +127,27 @@ with tab_emp:
     if not empleados:
         st.info("No hay empleados registrados aún.")
     else:
-        rows_emp = []
-        for emp in empleados:
-            shift = db.get_shift(emp["telegram_id"])
-            rows_emp.append({
-                "Empleado 2H Mov. Suelos": emp["name"],
-                "Turno entr.": f"{shift[0]:02d}:{shift[1]:02d}",
-                "Turno sal.":  f"{shift[2]:02d}:{shift[3]:02d}",
-                "ID Telegram": emp["telegram_id"],
-                "Registrado":  emp["registered_at"][:10],
-            })
-        st.dataframe(
-            pd.DataFrame(rows_emp),
-            use_container_width=True,
-            hide_index=True,
-        )
+        secciones = [
+            ("empleado",          "Empleados"),
+            ("administracion",    "Administración"),
+            ("direccion_tecnica", "Dirección Técnica"),
+        ]
+
+        for cat_key, cat_label in secciones:
+            grupo = [e for e in empleados if e.get("categoria", "empleado") == cat_key]
+            if not grupo:
+                continue
+            st.subheader(cat_label)
+            filas = []
+            for emp in grupo:
+                shift = db.get_shift(emp["telegram_id"])
+                turno = f"{shift[0]:02d}:{shift[1]:02d} – {shift[2]:02d}:{shift[3]:02d}"
+                filas.append({
+                    "Nombre":    emp["name"],
+                    "Turno":     turno,
+                    "Registrado": emp["registered_at"][:10],
+                })
+            st.dataframe(pd.DataFrame(filas), use_container_width=True, hide_index=True)
 
         st.divider()
         st.subheader("Últimos fichajes por empleado")
