@@ -49,18 +49,12 @@ st.markdown("""
     align-items: center;
     gap: 16px;
     padding: 8px 0 16px;
-    border-bottom: 2px solid #737869;
+    border-bottom: 2px solid #E8E800;
     margin-bottom: 16px;
   }
   .header-2h svg { flex-shrink: 0; }
-  .header-title { font-size: 22px; font-weight: 600; color: #2C2C28; line-height: 1.2; }
-  .header-sub { font-size: 12px; color: #737869; margin-top: 2px; }
-  .badge-amarillo {
-    background: #E8E800; color: #2C2C28;
-    font-size: 10px; font-weight: 700;
-    padding: 2px 10px; border-radius: 20px;
-    display: inline-block; margin-left: 8px;
-  }
+  .header-title { font-size: 22px; font-weight: 600; color: #ECEFCA; line-height: 1.2; }
+  .header-sub { font-size: 12px; color: #ECEFCA; opacity: 0.7; margin-top: 2px; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -74,7 +68,7 @@ st.markdown(f"""
           font-family="'Segoe UI', Arial, sans-serif" letter-spacing="-2">2H</text>
   </svg>
   <div>
-    <div class="header-title">2H Mov. Suelos — Panel de Control</div>
+    <div class="header-title">2H Mov. Suelos &nbsp;<span style="color:#E8E800;">|</span>&nbsp; Panel de Control</div>
     <div class="header-sub">Actualizado: {ahora().strftime('%d/%m/%Y  %H:%M')}</div>
   </div>
 </div>
