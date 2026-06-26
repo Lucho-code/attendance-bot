@@ -35,7 +35,7 @@ st.set_page_config(
 st.title("2H Mov. Suelos — Panel de Asistencia")
 st.caption(f"Actualizado: {ahora().strftime('%d/%m/%Y  %H:%M')}")
 
-tab_hoy, tab_emp, tab_rep = st.tabs(["📅 Hoy", "👥 Empleados", "📊 Reportes"])
+tab_hoy, tab_emp, tab_rep, tab_normas = st.tabs(["📅 Hoy", "👥 Empleados", "📊 Reportes", "📋 Normas"])
 
 # ── TAB 1: Estado de hoy (auto-refresca cada 30 seg) ─────────────────────────
 @st.fragment(run_every=30)
@@ -231,3 +231,52 @@ with tab_rep:
             st.dataframe(resumen, use_container_width=True, hide_index=True)
     else:
         st.info("Sin registros para el mes actual.")
+
+# ── TAB 4: Normas operativas ──────────────────────────────────────────────────
+with tab_normas:
+    st.subheader("Horario de trabajo")
+    st.dataframe(pd.DataFrame([
+        {"Día": "Lunes a viernes", "Franja": "07:00 – 16:00",                "Tipo": "Horas normales"},
+        {"Día": "Lunes a viernes", "Franja": "Antes 07:00 / Después 16:00",  "Tipo": "Extra 50%"},
+        {"Día": "Sábado",          "Franja": "07:00 – 11:00",                "Tipo": "Extra 50%"},
+        {"Día": "Sábado",          "Franja": "11:00 en adelante",            "Tipo": "Extra 100%"},
+        {"Día": "Domingo",         "Franja": "Todo el día",                  "Tipo": "Extra 100%"},
+        {"Día": "Feriados",        "Franja": "Todo el día",                  "Tipo": "Extra 100%"},
+    ]), use_container_width=True, hide_index=True)
+
+    st.divider()
+    st.subheader("Límites mensuales de horas extra — Empleados")
+    col1, col2 = st.columns(2)
+    col1.metric("Máximo extra 50%",  "20 horas / mes")
+    col2.metric("Máximo extra 100%", "10 horas / mes")
+    st.caption("Cuando un empleado alcanza estos límites, el sistema envía una alerta automática al administrador por Telegram.")
+
+    st.divider()
+    st.subheader("Tolerancias de fichaje")
+    st.dataframe(pd.DataFrame([
+        {"Situación": "Llegada hasta 15 min tarde",       "Resultado": "Se cuenta como entrada a horario"},
+        {"Situación": "Salida hasta 15 min antes",        "Resultado": "Se cuenta como salida a horario"},
+        {"Situación": "Sábado: salida hasta 10:53",       "Resultado": "Se cuenta como salida a las 11:00"},
+        {"Situación": "Llegada más de 15 min tarde",      "Resultado": "Se descuentan los minutos de atraso"},
+    ]), use_container_width=True, hide_index=True)
+
+    st.divider()
+    st.subheader("Reportes automáticos")
+    st.dataframe(pd.DataFrame([
+        {"Cuándo": "Día 15 del mes a las 18:00",    "Qué": "Reporte 1ra quincena (días 1–15) por Telegram y email"},
+        {"Cuándo": "Último día del mes a las 18:00","Qué": "Reporte 2da quincena (días 16–fin) por Telegram y email"},
+        {"Cuándo": "Todos los días a las 23:00",    "Qué": "Backup automático de la base de datos (PC + OneDrive + Google Drive)"},
+        {"Cuándo": "09:00 a 12:00 (días hábiles)",  "Qué": "Alerta si algún empleado no registró entrada"},
+        {"Cuándo": "18:30 (días hábiles)",          "Qué": "Recordatorio a empleados que no registraron salida"},
+    ]), use_container_width=True, hide_index=True)
+
+    st.divider()
+    st.subheader("Cómo fichar")
+    col1, col2 = st.columns(2)
+    with col1:
+        st.markdown("**Entrada** — escribir o decir por audio:")
+        st.code("llegué · entré · entre · presente\narranqué · arranco · inicio · entro")
+    with col2:
+        st.markdown("**Salida** — escribir o decir por audio:")
+        st.code("me voy · salgo · salí · sali\nlisto · terminé · ya está · fin")
+    st.caption("El bot de Telegram también acepta mensajes de voz. Funciona igual que el texto.")

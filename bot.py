@@ -242,6 +242,61 @@ async def _hacer_salgo(update: Update, context: ContextTypes.DEFAULT_TYPE = None
 
     await update.message.reply_text(msg.strip(), parse_mode="Markdown")
 
+    # Verificar límites mensuales de horas extra (solo empleados)
+    emp_data = db.get_employee(user.id)
+    if emp_data and emp_data.get("categoria", "empleado") == "empleado":
+        await _check_overtime_limits(user.id, emp_data["name"], ts, context.bot)
+
+
+LIMITE_EXTRA_50  = 20.0   # horas extra al 50% por mes
+LIMITE_EXTRA_100 = 10.0   # horas extra al 100% por mes
+
+
+async def _check_overtime_limits(telegram_id: int, name: str, ts: datetime, bot):
+    """Alerta al admin si el empleado cruzó el límite mensual de horas extra."""
+    hoy   = ts.date()
+    start = hoy.replace(day=1)
+
+    records = db.get_records_by_period(start, hoy)
+    emp_rec = [r for r in records if r.get("telegram_id") == telegram_id]
+
+    total_50 = total_100 = 0.0
+    prev_50  = prev_100  = 0.0   # total sin la sesión de hoy
+
+    for rec in emp_rec:
+        sessions = rec.get("sessions", [rec])
+        for idx, s in enumerate(sessions):
+            if not (s.get("entry_time") and s.get("exit_time")):
+                continue
+            is_hday = bool(db.is_holiday(date.fromisoformat(rec["date"])))
+            weekday = date.fromisoformat(rec["date"]).weekday()
+            n, e50, e100 = calcular_horas(s["entry_time"], s["exit_time"], weekday, is_hday)
+            # Excluir la sesión más reciente (la que acaba de cerrar)
+            es_ultima = (rec["date"] == hoy.isoformat() and
+                         idx == len(sessions) - 1)
+            if not es_ultima:
+                prev_50  += e50
+                prev_100 += e100
+            total_50  += e50
+            total_100 += e100
+
+    alertas = []
+    if prev_50 < LIMITE_EXTRA_50 <= total_50:
+        alertas.append(
+            f"Hs. extra 50%: *{total_50:.1f}h* — límite mensual {LIMITE_EXTRA_50:.0f}h alcanzado")
+    if prev_100 < LIMITE_EXTRA_100 <= total_100:
+        alertas.append(
+            f"Hs. extra 100%: *{total_100:.1f}h* — límite mensual {LIMITE_EXTRA_100:.0f}h alcanzado")
+
+    if alertas:
+        texto = (
+            f"Alerta horas extra — *{name}*\n"
+            f"Mes: {MESES_ES[hoy.month]} {hoy.year}\n\n"
+            + "\n".join(alertas)
+        )
+        for admin_id in ADMIN_IDS:
+            await bot.send_message(chat_id=admin_id, text=texto, parse_mode="Markdown")
+
 
 async def cmd_entro(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await _hacer_entro(update, context)
