@@ -32,6 +32,14 @@ st.set_page_config(
     layout="wide",
 )
 
+st.markdown("""
+<style>
+  .stDeployButton { display: none !important; }
+  #MainMenu { visibility: hidden; }
+  footer { visibility: hidden; }
+</style>
+""", unsafe_allow_html=True)
+
 st.title("2H Mov. Suelos — Panel de Control")
 st.caption(f"Actualizado: {ahora().strftime('%d/%m/%Y  %H:%M')}")
 
