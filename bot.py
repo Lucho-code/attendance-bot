@@ -47,7 +47,7 @@ PALABRAS_ENTRADA = [
     "inicio",
     "check in", "checkin",
     "entrada",
-    "/entro", "entro",
+    "/entro", "entro", "entre",
 ]
 PALABRAS_SALIDA = [
     "me voy",
