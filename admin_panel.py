@@ -280,9 +280,9 @@ with tab_emp:
         st.info("No hay empleados registrados aún.")
     else:
         secciones = [
-            ("empleado",          "Empleados"),
-            ("administracion",    "Administración"),
-            ("direccion_tecnica", "Dirección Técnica"),
+            ("empleado",          "👷 Empleados"),
+            ("administracion",    "💼 Administración"),
+            ("direccion_tecnica", "⚙️ Dirección Técnica"),
         ]
 
         for cat_key, cat_label in secciones:
