@@ -8,11 +8,12 @@ from itertools import groupby
 
 import pytz
 from dotenv import load_dotenv
-from telegram import Update
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (
     Application,
     CommandHandler,
     MessageHandler,
+    CallbackQueryHandler,
     filters,
     ContextTypes,
     CallbackContext,
@@ -168,6 +169,11 @@ async def _hacer_entro(update: Update, context: ContextTypes.DEFAULT_TYPE = None
         )
         return
 
+    # Empleados seleccionan obra antes de registrar
+    if emp_cat == "empleado" and db.list_obras():
+        await _mostrar_obras(update.message, context, "entro")
+        return
+
     ts = ahora()
     result = db.register_entry(user.id, ts)
 
@@ -180,7 +186,6 @@ async def _hacer_entro(update: Update, context: ContextTypes.DEFAULT_TYPE = None
         )
         return
 
-    # result es "ok_N" donde N es el número de sesión
     n_sesion = int(result.split("_")[1])
     sesion_txt = "" if n_sesion == 1 else f" (sesión {n_sesion})"
     await update.message.reply_text(
@@ -247,10 +252,18 @@ async def _hacer_salgo(update: Update, context: ContextTypes.DEFAULT_TYPE = None
     daily_total   = status.get("daily_total", 0) if status else 0
     session_count = status.get("session_count", 1) if status else 1
 
+    # Mostrar obra de la sesión que se está cerrando
+    obra_txt = ""
+    if status and status.get("obra_id"):
+        obra = db.get_obra(status["obra_id"])
+        if obra:
+            obra_txt = f"Obra:   {obra['name']}\n"
+
     msg = (
         f"*Salida registrada*\n"
         f"Nombre: {employee['name']}\n"
         f"Hora:   {ts.strftime('%H:%M')}\n"
+        f"{obra_txt}"
     )
     if norm  > 0: msg += f"Hs. normales:   {norm:.2f}\n"
     if e50   > 0: msg += f"Hs. extra 50%:  {e50:.2f}\n"
@@ -771,6 +784,101 @@ async def cmd_turno(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 
+async def _mostrar_obras(message, context, action: str):
+    """Muestra botones de obras activas. action = 'entro'."""
+    obras = db.list_obras()
+    if not obras:
+        await message.reply_text(
+            "No hay obras activas registradas.\n"
+            "El administrador puede agregar una con /obra Nombre."
+        )
+        return False
+    keyboard = [
+        [InlineKeyboardButton(o["name"], callback_data=f"obra:{action}:{o['id']}")]
+        for o in obras
+    ]
+    await message.reply_text("¿En qué obra estás?", reply_markup=InlineKeyboardMarkup(keyboard))
+    return True
+
+
+async def callback_obra(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Procesa la selección de obra y registra la entrada."""
+    query = update.callback_query
+    await query.answer()
+
+    partes   = query.data.split(":", 2)
+    action   = partes[1]
+    obra_id  = partes[2]
+    user     = query.from_user
+    employee = db.get_employee(user.id)
+    obra     = db.get_obra(obra_id)
+    ts       = ahora()
+
+    if action == "entro":
+        result = db.register_entry(user.id, ts, obra_id)
+        if result == "already_in":
+            status = db.get_today_status(user.id, ts.date())
+            hora   = status["entry_time"].strftime("%H:%M") if status else "?"
+            await query.edit_message_text(
+                f"Ya tenés entrada a las {hora}.\n"
+                f"Registrá la salida primero con \"me voy\"."
+            )
+            return
+        n       = int(result.split("_")[1])
+        sesion  = f" (sesión {n})" if n > 1 else ""
+        nombre_obra = obra["name"] if obra else "Sin obra"
+        await query.edit_message_text(
+            f"*Entrada registrada{sesion}*\n"
+            f"Nombre: {employee['name']}\n"
+            f"Obra:   {nombre_obra}\n"
+            f"Hora:   {ts.strftime('%H:%M')}\n"
+            f"Fecha:  {ts.strftime('%d/%m/%Y')}",
+            parse_mode="Markdown",
+        )
+        _backup_live()
+
+
+# ---------- comandos admin: obras ----------
+
+async def cmd_obra(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Uso: /obra Nombre de la obra"""
+    if not es_admin(update.effective_user.id):
+        return
+    if not context.args:
+        await update.message.reply_text("Uso: /obra Nombre de la obra\nEjemplo: /obra Obra Central")
+        return
+    name    = " ".join(context.args)
+    obra_id = db.create_obra(name)
+    await update.message.reply_text(f"Obra registrada: *{name}*", parse_mode="Markdown")
+
+
+async def cmd_cerrar_obra(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Uso: /cerrar_obra Nombre"""
+    if not es_admin(update.effective_user.id):
+        return
+    if not context.args:
+        await update.message.reply_text("Uso: /cerrar_obra Nombre")
+        return
+    cerradas = db.close_obra(" ".join(context.args))
+    if cerradas:
+        nombres = ", ".join(o["name"] for o in cerradas)
+        await update.message.reply_text(f"Obra cerrada: {nombres}")
+    else:
+        await update.message.reply_text("No encontré esa obra activa.")
+
+
+async def cmd_obras(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Lista las obras activas."""
+    if not es_admin(update.effective_user.id):
+        return
+    obras = db.list_obras()
+    if not obras:
+        await update.message.reply_text("No hay obras activas.")
+        return
+    lines = ["*Obras activas:*"] + [f"  • {o['name']}" for o in obras]
+    await update.message.reply_text("\n".join(lines), parse_mode="Markdown")
+
+
 async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # Prioridad 1: si estamos esperando el nombre, guardarlo
     if await _guardar_nombre(update, context):
@@ -1232,6 +1340,10 @@ def main():
     app.add_handler(CommandHandler("ver",          cmd_ver_fichajes))
     app.add_handler(CommandHandler("turno",        cmd_turno))
     app.add_handler(CommandHandler("categoria",    cmd_categoria))
+    app.add_handler(CommandHandler("obra",         cmd_obra))
+    app.add_handler(CommandHandler("cerrar_obra",  cmd_cerrar_obra))
+    app.add_handler(CommandHandler("obras",        cmd_obras))
+    app.add_handler(CallbackQueryHandler(callback_obra, pattern=r"^obra:"))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND,     handle_text))
     app.add_handler(MessageHandler(filters.VOICE,                       handle_voice))
     app.add_handler(MessageHandler(filters.LOCATION,                    handle_location))

@@ -35,7 +35,7 @@ st.set_page_config(
 st.title("2H Mov. Suelos — Panel de Asistencia")
 st.caption(f"Actualizado: {ahora().strftime('%d/%m/%Y  %H:%M')}")
 
-tab_hoy, tab_emp, tab_rep, tab_normas = st.tabs(["📅 Hoy", "👥 Empleados", "📊 Reportes", "📋 Normas"])
+tab_hoy, tab_emp, tab_rep, tab_obras, tab_normas = st.tabs(["📅 Hoy", "👥 Empleados", "📊 Reportes", "🏗️ Obras", "📋 Normas"])
 
 # ── TAB 1: Estado de hoy (auto-refresca cada 30 seg) ─────────────────────────
 @st.fragment(run_every=30)
@@ -252,7 +252,59 @@ with tab_rep:
     else:
         st.info("Sin registros para el mes actual.")
 
-# ── TAB 4: Normas operativas ──────────────────────────────────────────────────
+# ── TAB 4: Obras ──────────────────────────────────────────────────────────────
+with tab_obras:
+    hoy    = ahora().date()
+    start  = hoy.replace(day=1)
+    obras  = db.list_obras(active_only=False)
+
+    if not obras:
+        st.info("No hay obras registradas. Usá /obra Nombre en el bot para agregar una.")
+    else:
+        obras_activas = [o for o in obras if o["active"]]
+        obras_cerradas = [o for o in obras if not o["active"]]
+
+        if obras_activas:
+            st.subheader("Obras activas")
+            for obra in obras_activas:
+                registros = db.get_obra_hours(obra["id"], start, hoy)
+
+                # Quién está en la obra ahora mismo
+                en_obra = []
+                for emp in db.list_employees():
+                    st_hoy = db.get_today_status(emp["telegram_id"], hoy)
+                    if (st_hoy and st_hoy.get("obra_id") == obra["id"]
+                            and st_hoy.get("entry_time") and not st_hoy.get("exit_time")):
+                        en_obra.append(emp["name"])
+
+                total_hs = sum(r.get("total_hours") or 0 for r in registros)
+
+                with st.expander(
+                    f"**{obra['name']}** — {total_hs:.1f} hs este mes"
+                    + (f" · 🟢 {', '.join(en_obra)}" if en_obra else "")
+                ):
+                    if registros:
+                        filas = []
+                        for r in registros:
+                            ent = r["entry_time"].strftime("%H:%M") if r.get("entry_time") else "–"
+                            sal = r["exit_time"].strftime("%H:%M")  if r.get("exit_time")  else "Abierta"
+                            hs  = f"{r['total_hours']:.2f}"         if r.get("total_hours") else "–"
+                            filas.append({
+                                "Empleado": r["name"],
+                                "Fecha":    r["date"],
+                                "Entrada":  ent,
+                                "Salida":   sal,
+                                "Horas":    hs,
+                            })
+                        st.dataframe(pd.DataFrame(filas), use_container_width=True, hide_index=True)
+                    else:
+                        st.caption("Sin registros este mes.")
+
+        if obras_cerradas:
+            st.subheader("Obras cerradas")
+            st.caption(", ".join(o["name"] for o in obras_cerradas))
+
+# ── TAB 5: Normas operativas ──────────────────────────────────────────────────
 with tab_normas:
     st.subheader("Horario de trabajo")
     st.dataframe(pd.DataFrame([

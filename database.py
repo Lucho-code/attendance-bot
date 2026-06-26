@@ -104,12 +104,24 @@ class Database:
                 FOREIGN KEY (telegram_id) REFERENCES employees(telegram_id)
             );
         """)
-        # Migración segura: agrega columna categoria si no existe
-        cols = [r[1] for r in self.conn.execute("PRAGMA table_info(employees)").fetchall()]
-        if "categoria" not in cols:
-            self.conn.execute(
-                "ALTER TABLE employees ADD COLUMN categoria TEXT DEFAULT 'empleado'"
+        # Migraciones seguras
+        emp_cols = [r[1] for r in self.conn.execute("PRAGMA table_info(employees)").fetchall()]
+        if "categoria" not in emp_cols:
+            self.conn.execute("ALTER TABLE employees ADD COLUMN categoria TEXT DEFAULT 'empleado'")
+
+        att_cols = [r[1] for r in self.conn.execute("PRAGMA table_info(attendance)").fetchall()]
+        if "obra_id" not in att_cols:
+            self.conn.execute("ALTER TABLE attendance ADD COLUMN obra_id TEXT DEFAULT NULL")
+
+        # Tabla de obras
+        self.conn.execute("""
+            CREATE TABLE IF NOT EXISTS obras (
+                id         TEXT PRIMARY KEY,
+                name       TEXT NOT NULL UNIQUE,
+                active     INTEGER DEFAULT 1,
+                created_at TEXT NOT NULL
             )
+        """)
         self.conn.commit()
 
     def _seed_holidays(self):
@@ -161,7 +173,57 @@ class Database:
 
     # ---------- attendance ----------
 
-    def register_entry(self, telegram_id: int, timestamp: datetime) -> str:
+    # ---------- obras ----------
+
+    def create_obra(self, name: str) -> str:
+        import re
+        obra_id = re.sub(r'[^a-z0-9_]', '', name.lower().strip().replace(" ", "_"))
+        if not obra_id:
+            obra_id = f"obra_{int(datetime.now(TIMEZONE).timestamp())}"
+        existing = self.conn.execute("SELECT id FROM obras WHERE id = ?", (obra_id,)).fetchone()
+        if existing:
+            self.conn.execute("UPDATE obras SET active = 1, name = ? WHERE id = ?", (name.strip(), obra_id))
+        else:
+            self.conn.execute(
+                "INSERT INTO obras (id, name, active, created_at) VALUES (?, ?, 1, ?)",
+                (obra_id, name.strip(), datetime.now(TIMEZONE).isoformat()),
+            )
+        self.conn.commit()
+        return obra_id
+
+    def list_obras(self, active_only: bool = True) -> list:
+        q = "SELECT * FROM obras WHERE active = 1 ORDER BY name" if active_only \
+            else "SELECT * FROM obras ORDER BY name"
+        return [dict(r) for r in self.conn.execute(q).fetchall()]
+
+    def get_obra(self, obra_id: str):
+        row = self.conn.execute("SELECT * FROM obras WHERE id = ?", (obra_id,)).fetchone()
+        return dict(row) if row else None
+
+    def close_obra(self, name_fragment: str) -> list:
+        matches = self.conn.execute(
+            "SELECT * FROM obras WHERE LOWER(name) LIKE ? AND active = 1",
+            (f"%{name_fragment.lower()}%",),
+        ).fetchall()
+        for m in matches:
+            self.conn.execute("UPDATE obras SET active = 0 WHERE id = ?", (m["id"],))
+        self.conn.commit()
+        return [dict(m) for m in matches]
+
+    def get_obra_hours(self, obra_id: str, start: date, end: date) -> list:
+        """Retorna registros de asistencia filtrados por obra en un período."""
+        rows = self.conn.execute("""
+            SELECT e.name, a.date, a.entry_time, a.exit_time, a.total_hours, a.obra_id
+            FROM attendance a
+            JOIN employees e ON a.telegram_id = e.telegram_id
+            WHERE a.obra_id = ? AND a.date BETWEEN ? AND ?
+            ORDER BY a.date ASC, e.name ASC
+        """, (obra_id, start.isoformat(), end.isoformat())).fetchall()
+        return [self._parse_times(dict(r)) for r in rows]
+
+    # ---------- attendance ----------
+
+    def register_entry(self, telegram_id: int, timestamp: datetime, obra_id: str = None) -> str:
         """Permite múltiples entradas por día. Solo bloquea si hay entrada abierta."""
         today = timestamp.date().isoformat()
         open_entry = self.conn.execute(
@@ -171,18 +233,17 @@ class Database:
         ).fetchone()
         if open_entry:
             return "already_in"
-        # Contar sesiones del día para informar al empleado
         count = self.conn.execute(
             "SELECT COUNT(*) FROM attendance WHERE telegram_id = ? AND date = ?",
             (telegram_id, today),
         ).fetchone()[0]
         self.conn.execute(
-            "INSERT INTO attendance (telegram_id, date, entry_time) VALUES (?, ?, ?)",
-            (telegram_id, today, timestamp.isoformat()),
+            "INSERT INTO attendance (telegram_id, date, entry_time, obra_id) VALUES (?, ?, ?, ?)",
+            (telegram_id, today, timestamp.isoformat(), obra_id),
         )
         self.conn.commit()
         _backup_live()
-        return f"ok_{count + 1}"   # ok_1 = primera entrada, ok_2 = segunda, etc.
+        return f"ok_{count + 1}"
 
     def register_exit(self, telegram_id: int, timestamp: datetime):
         today = timestamp.date().isoformat()
