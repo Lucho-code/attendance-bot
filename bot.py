@@ -903,14 +903,23 @@ def _check_and_restore_db() -> str | None:
     if not necesita:
         return None
 
+    # Primero buscar la copia en tiempo real (siempre la más actualizada)
+    live_backup = os.path.join(os.path.expanduser("~"), "OneDrive", "FichaYA", "attendance_live.db")
+
+    mejor = None
+    mejor_mtime = 0.0
+
+    if os.path.exists(live_backup):
+        mejor       = live_backup
+        mejor_mtime = os.path.getmtime(live_backup)
+        print(f"Copia en tiempo real encontrada: {live_backup}")
+
+    # Luego buscar en los directorios de backup por si hay algo más nuevo
     backup_dirs = [
         os.path.join(os.path.dirname(os.path.abspath(db_path)), "backups"),
         os.path.join(os.path.expanduser("~"), "OneDrive", "FichaYA", "backups"),
         r"G:\Mi unidad\FichaYA\backups",
     ]
-
-    mejor = None
-    mejor_mtime = 0.0
 
     for d in backup_dirs:
         if not os.path.isdir(d):
@@ -922,7 +931,7 @@ def _check_and_restore_db() -> str | None:
                 if mt > mejor_mtime:
                     mejor       = fpath
                     mejor_mtime = mt
-                break   # solo el más reciente de cada directorio
+                break
 
     if not mejor:
         print("No se encontró ningún backup. El sistema iniciará con DB vacía.")

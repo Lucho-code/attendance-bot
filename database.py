@@ -1,10 +1,28 @@
 import sqlite3
 import os
+import shutil
+import threading
 from datetime import datetime, date
 import pytz
 
-TIMEZONE = pytz.timezone("America/Argentina/Buenos_Aires")
-DB_PATH = os.getenv("DB_PATH", "attendance.db")
+TIMEZONE  = pytz.timezone("America/Argentina/Buenos_Aires")
+DB_PATH   = os.getenv("DB_PATH", "attendance.db")
+
+# Carpeta de copia en tiempo real (OneDrive local = instantáneo)
+_LIVE_BACKUP_PATH = os.path.join(
+    os.path.expanduser("~"), "OneDrive", "FichaYA", "attendance_live.db"
+)
+
+
+def _backup_live():
+    """Copia la DB a OneDrive en un hilo secundario. Silencioso si falla."""
+    def _copy():
+        try:
+            os.makedirs(os.path.dirname(_LIVE_BACKUP_PATH), exist_ok=True)
+            shutil.copy2(DB_PATH, _LIVE_BACKUP_PATH)
+        except Exception:
+            pass
+    threading.Thread(target=_copy, daemon=True).start()
 
 FERIADOS_2026 = [
     ("2026-01-01", "Año Nuevo"),
@@ -40,6 +58,7 @@ class Database:
         self.conn.row_factory = sqlite3.Row
         self._init_tables()
         self._seed_holidays()
+        _backup_live()   # copia inicial al arrancar
 
     def _init_tables(self):
         self.conn.executescript("""
@@ -108,6 +127,7 @@ class Database:
                 (telegram_id, name, datetime.now(TIMEZONE).isoformat()),
             )
         self.conn.commit()
+        _backup_live()
 
     def get_employee(self, telegram_id: int):
         row = self.conn.execute(
@@ -139,6 +159,7 @@ class Database:
             (telegram_id, today, timestamp.isoformat()),
         )
         self.conn.commit()
+        _backup_live()
         return "ok"
 
     def register_exit(self, telegram_id: int, timestamp: datetime):
@@ -160,6 +181,7 @@ class Database:
             (timestamp.isoformat(), total_hours, record["id"]),
         )
         self.conn.commit()
+        _backup_live()
         return {"total_hours": total_hours}
 
     def get_today_status(self, telegram_id: int, today: date):
