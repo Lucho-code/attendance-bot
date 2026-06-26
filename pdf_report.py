@@ -20,14 +20,25 @@ CATEGORIAS_LABEL = {
 }
 
 
+FONT_REGULAR = "C:/Windows/Fonts/arial.ttf"
+FONT_BOLD    = "C:/Windows/Fonts/arialbd.ttf"
+FONT_ITALIC  = "C:/Windows/Fonts/ariali.ttf"
+
+
 class PDF(FPDF):
+    def __init__(self):
+        super().__init__()
+        self.add_font("Arial",  fname=FONT_REGULAR)
+        self.add_font("Arial",  style="B", fname=FONT_BOLD)
+        self.add_font("Arial",  style="I", fname=FONT_ITALIC)
+
     def header(self):
-        self.set_font("Helvetica", "B", 14)
+        self.set_font("Arial", "B", 14)
         self.set_text_color(24, 95, 165)
         self.cell(0, 8, "2H Movimiento de Suelos", ln=True, align="C")
-        self.set_font("Helvetica", "", 9)
+        self.set_font("Arial", "", 9)
         self.set_text_color(100, 100, 100)
-        self.cell(0, 5, "Panel de Control — Reporte de Asistencia", ln=True, align="C")
+        self.cell(0, 5, "Panel de Control - Reporte de Asistencia", ln=True, align="C")
         self.ln(3)
         self.set_draw_color(24, 95, 165)
         self.set_line_width(0.5)
@@ -36,13 +47,13 @@ class PDF(FPDF):
 
     def footer(self):
         self.set_y(-12)
-        self.set_font("Helvetica", "I", 8)
+        self.set_font("Arial", "I", 8)
         self.set_text_color(150, 150, 150)
         now = datetime.now(TIMEZONE).strftime("%d/%m/%Y %H:%M")
-        self.cell(0, 5, f"Generado el {now}  —  Pág. {self.page_no()}", align="C")
+        self.cell(0, 5, f"Generado el {now}  -  Pag. {self.page_no()}", align="C")
 
     def section_title(self, title: str):
-        self.set_font("Helvetica", "B", 10)
+        self.set_font("Arial", "B", 10)
         self.set_fill_color(24, 95, 165)
         self.set_text_color(255, 255, 255)
         self.cell(0, 7, f"  {title}", ln=True, fill=True)
@@ -50,7 +61,7 @@ class PDF(FPDF):
         self.ln(1)
 
     def table_header(self, cols: list, widths: list):
-        self.set_font("Helvetica", "B", 8)
+        self.set_font("Arial", "B", 8)
         self.set_fill_color(220, 230, 245)
         self.set_text_color(0, 0, 0)
         for col, w in zip(cols, widths):
@@ -58,7 +69,7 @@ class PDF(FPDF):
         self.ln()
 
     def table_row(self, values: list, widths: list, aligns: list = None, shade: bool = False):
-        self.set_font("Helvetica", "", 8)
+        self.set_font("Arial", "", 8)
         if shade:
             self.set_fill_color(245, 248, 252)
         else:
@@ -75,10 +86,10 @@ def build_pdf(db, start: date, end: date, titulo: str) -> io.BytesIO:
     pdf.add_page()
 
     periodo = f"{start.strftime('%d/%m/%Y')} al {end.strftime('%d/%m/%Y')}"
-    pdf.set_font("Helvetica", "B", 11)
+    pdf.set_font("Arial", "B", 11)
     pdf.set_text_color(50, 50, 50)
     pdf.cell(0, 7, titulo, ln=True, align="C")
-    pdf.set_font("Helvetica", "", 9)
+    pdf.set_font("Arial", "", 9)
     pdf.set_text_color(100, 100, 100)
     pdf.cell(0, 5, f"Período: {periodo}", ln=True, align="C")
     pdf.ln(5)
@@ -139,7 +150,7 @@ def build_pdf(db, start: date, end: date, titulo: str) -> io.BytesIO:
             tot_100 += emp["e100"]
 
         # Fila de totales
-        pdf.set_font("Helvetica", "B", 8)
+        pdf.set_font("Arial", "B", 8)
         pdf.set_fill_color(24, 95, 165)
         pdf.set_text_color(255, 255, 255)
         total_gral = tot_n + tot_50 + tot_100
@@ -181,7 +192,7 @@ def build_pdf(db, start: date, end: date, titulo: str) -> io.BytesIO:
                 shade = not shade
 
             # Subtotal por obra
-            pdf.set_font("Helvetica", "B", 8)
+            pdf.set_font("Arial", "B", 8)
             pdf.set_fill_color(220, 230, 245)
             pdf.set_text_color(0, 0, 80)
             for val, w, aln in zip(
