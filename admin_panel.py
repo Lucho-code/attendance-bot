@@ -38,11 +38,47 @@ st.markdown("""
   .stDeployButton { display: none !important; }
   #MainMenu { visibility: hidden; }
   footer { visibility: hidden; }
+
+  /* Acento amarillo 2H en botones primarios */
+  .stButton > button[kind="primary"],
+  div[data-testid="stMetric"] label { color: #737869 !important; }
+
+  /* Header personalizado */
+  .header-2h {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    padding: 8px 0 16px;
+    border-bottom: 2px solid #737869;
+    margin-bottom: 16px;
+  }
+  .header-2h svg { flex-shrink: 0; }
+  .header-title { font-size: 22px; font-weight: 600; color: #2C2C28; line-height: 1.2; }
+  .header-sub { font-size: 12px; color: #737869; margin-top: 2px; }
+  .badge-amarillo {
+    background: #E8E800; color: #2C2C28;
+    font-size: 10px; font-weight: 700;
+    padding: 2px 10px; border-radius: 20px;
+    display: inline-block; margin-left: 8px;
+  }
 </style>
 """, unsafe_allow_html=True)
 
-st.title("2H Mov. Suelos — Panel de Control")
-st.caption(f"Actualizado: {ahora().strftime('%d/%m/%Y  %H:%M')}")
+# Header con logo 2H
+st.markdown(f"""
+<div class="header-2h">
+  <svg viewBox="0 0 100 100" width="56" height="56" xmlns="http://www.w3.org/2000/svg">
+    <circle cx="50" cy="50" r="50" fill="#737869"/>
+    <text x="50" y="66" font-size="44" font-weight="300"
+          text-anchor="middle" fill="#ECEFCA"
+          font-family="'Segoe UI', Arial, sans-serif" letter-spacing="-2">2H</text>
+  </svg>
+  <div>
+    <div class="header-title">2H Mov. Suelos — Panel de Control</div>
+    <div class="header-sub">Actualizado: {ahora().strftime('%d/%m/%Y  %H:%M')}</div>
+  </div>
+</div>
+""", unsafe_allow_html=True)
 
 tab_hoy, tab_emp, tab_rep, tab_obras, tab_normas = st.tabs(["📅 Hoy", "👥 Empleados", "📊 Reportes", "🏗️ Obras", "📋 Normas"])
 
