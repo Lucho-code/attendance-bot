@@ -122,6 +122,19 @@ class Database:
                 created_at TEXT NOT NULL
             )
         """)
+        self.conn.execute("""
+            CREATE TABLE IF NOT EXISTS obra_sessions (
+                id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                telegram_id INTEGER NOT NULL,
+                obra_id     TEXT NOT NULL,
+                date        TEXT NOT NULL,
+                entry_time  TEXT,
+                exit_time   TEXT,
+                total_hours REAL,
+                FOREIGN KEY (telegram_id) REFERENCES employees(telegram_id),
+                FOREIGN KEY (obra_id) REFERENCES obras(id)
+            )
+        """)
         self.conn.commit()
 
     def _seed_holidays(self):
@@ -211,14 +224,81 @@ class Database:
         return [dict(m) for m in matches]
 
     def get_obra_hours(self, obra_id: str, start: date, end: date) -> list:
-        """Retorna registros de asistencia filtrados por obra en un período."""
         rows = self.conn.execute("""
-            SELECT e.name, a.date, a.entry_time, a.exit_time, a.total_hours, a.obra_id
-            FROM attendance a
-            JOIN employees e ON a.telegram_id = e.telegram_id
-            WHERE a.obra_id = ? AND a.date BETWEEN ? AND ?
-            ORDER BY a.date ASC, e.name ASC
+            SELECT e.name, o.entry_time, o.exit_time, o.total_hours, o.date
+            FROM obra_sessions o
+            JOIN employees e ON o.telegram_id = e.telegram_id
+            WHERE o.obra_id = ? AND o.date BETWEEN ? AND ?
+            ORDER BY o.date ASC, e.name ASC
         """, (obra_id, start.isoformat(), end.isoformat())).fetchall()
+        return [self._parse_times(dict(r)) for r in rows]
+
+    def register_obra_entry(self, telegram_id: int, obra_id: str, timestamp: datetime) -> str:
+        """Registra llegada a obra. Solo bloquea si hay sesión de obra abierta."""
+        today = timestamp.date().isoformat()
+        open_s = self.conn.execute(
+            """SELECT id FROM obra_sessions
+               WHERE telegram_id = ? AND exit_time IS NULL""",
+            (telegram_id,),
+        ).fetchone()
+        if open_s:
+            return "already_in_obra"
+        self.conn.execute(
+            """INSERT INTO obra_sessions (telegram_id, obra_id, date, entry_time)
+               VALUES (?, ?, ?, ?)""",
+            (telegram_id, obra_id, today, timestamp.isoformat()),
+        )
+        self.conn.commit()
+        _backup_live()
+        return "ok"
+
+    def register_obra_exit(self, telegram_id: int, timestamp: datetime):
+        """Cierra la sesión de obra abierta."""
+        record = self.conn.execute(
+            """SELECT * FROM obra_sessions
+               WHERE telegram_id = ? AND exit_time IS NULL
+               ORDER BY entry_time DESC LIMIT 1""",
+            (telegram_id,),
+        ).fetchone()
+        if not record:
+            return None
+        entry = datetime.fromisoformat(record["entry_time"])
+        if entry.tzinfo is None:
+            entry = TIMEZONE.localize(entry)
+        total = (timestamp - entry).total_seconds() / 3600
+        self.conn.execute(
+            "UPDATE obra_sessions SET exit_time = ?, total_hours = ? WHERE id = ?",
+            (timestamp.isoformat(), total, record["id"]),
+        )
+        self.conn.commit()
+        _backup_live()
+        return {"obra_id": record["obra_id"], "total_hours": total}
+
+    def get_open_obra_session(self, telegram_id: int):
+        row = self.conn.execute(
+            """SELECT * FROM obra_sessions
+               WHERE telegram_id = ? AND exit_time IS NULL
+               ORDER BY entry_time DESC LIMIT 1""",
+            (telegram_id,),
+        ).fetchone()
+        if not row:
+            return None
+        r = dict(row)
+        if r["entry_time"]:
+            dt = datetime.fromisoformat(r["entry_time"])
+            r["entry_time"] = TIMEZONE.localize(dt) if dt.tzinfo is None else dt.astimezone(TIMEZONE)
+        return r
+
+    def get_all_obra_sessions(self, start: date, end: date) -> list:
+        rows = self.conn.execute("""
+            SELECT e.name emp_name, ob.name obra_name,
+                   os.date, os.entry_time, os.exit_time, os.total_hours
+            FROM obra_sessions os
+            JOIN employees e  ON os.telegram_id = e.telegram_id
+            JOIN obras ob ON os.obra_id = ob.id
+            WHERE os.date BETWEEN ? AND ?
+            ORDER BY ob.name, os.date, e.name
+        """, (start.isoformat(), end.isoformat())).fetchall()
         return [self._parse_times(dict(r)) for r in rows]
 
     # ---------- attendance ----------

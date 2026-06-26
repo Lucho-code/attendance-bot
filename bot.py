@@ -39,6 +39,15 @@ OFFICE_LAT        = float(os.getenv("OFFICE_LAT", "0") or "0")
 OFFICE_LON        = float(os.getenv("OFFICE_LON", "0") or "0")
 OFFICE_RADIUS_M   = float(os.getenv("OFFICE_RADIUS_METERS", "300") or "300")
 
+PALABRAS_EN_OBRA = [
+    "en obra", "inicio obra", "arranco obra", "entro obra",
+    "llegue obra", "llegué obra", "estoy en obra",
+]
+PALABRAS_FIN_OBRA = [
+    "salgo de obra", "salgo obra", "fin obra", "termino obra",
+    "terminé obra", "salgo de la obra", "me voy de obra",
+]
+
 PALABRAS_ENTRADA = [
     "llegué", "llegue",
     "presente",
@@ -109,18 +118,20 @@ async def _guardar_nombre(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         f"\n"
         f"*Podés escribir o mandar un audio de voz — funciona igual.*\n"
         f"\n"
-        f"Al llegar, escribí o decí alguna de estas:\n"
-        f"  › llegué · entré · entre · presente\n"
-        f"  › arranqué · arranco · inicio · entro\n"
+        f"Al llegar al galpón:\n"
+        f"  › llegué · entré · presente · arranqué\n"
         f"\n"
-        f"Al irte, escribí o decí alguna de estas:\n"
-        f"  › me voy · salgo · salí · sali\n"
-        f"  › listo · terminé · ya está · fin\n"
+        f"Al irte del galpón:\n"
+        f"  › me voy · salgo · listo · terminé\n"
         f"\n"
-        f"Para ver cómo vas hoy:\n"
-        f"  › /estado\n"
+        f"Al llegar a una obra:\n"
+        f"  › en obra · inicio obra · entro obra\n"
         f"\n"
-        f"_Eso es todo. Sin formularios, sin papel._\n"
+        f"Al salir de la obra:\n"
+        f"  › salgo de obra · fin obra · termino obra\n"
+        f"\n"
+        f"Para ver tu estado: /estado\n"
+        f"\n"
         f"_Cualquier duda hablá con tu administrador._",
         parse_mode="Markdown",
     )
@@ -167,11 +178,6 @@ async def _hacer_entro(update: Update, context: ContextTypes.DEFAULT_TYPE = None
             "\n"
             "El sistema verifica que estés en el lugar de trabajo y registra la entrada automáticamente."
         )
-        return
-
-    # Empleados seleccionan obra antes de registrar
-    if emp_cat == "empleado" and db.list_obras():
-        await _mostrar_obras(update.message, context, "entro")
         return
 
     ts = ahora()
@@ -784,6 +790,56 @@ async def cmd_turno(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 
+async def _en_obra(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Empleado llega a una obra — muestra selector de obras."""
+    user = update.effective_user
+    employee = db.get_employee(user.id)
+    if not employee:
+        await _pedir_nombre(update, context)
+        return
+
+    # Verificar si ya hay sesión de obra abierta
+    abierta = db.get_open_obra_session(user.id)
+    if abierta:
+        obra = db.get_obra(abierta["obra_id"])
+        hora = abierta["entry_time"].strftime("%H:%M")
+        await update.message.reply_text(
+            f"Ya estás en {obra['name'] if obra else 'una obra'} desde las {hora}.\n"
+            f"Decí \"salgo de obra\" para cerrar esa sesión primero."
+        )
+        return
+
+    await _mostrar_obras(update.message, context, "entro")
+
+
+async def _fin_obra(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Empleado sale de una obra."""
+    user = update.effective_user
+    employee = db.get_employee(user.id)
+    if not employee:
+        await _pedir_nombre(update, context)
+        return
+
+    ts     = ahora()
+    result = db.register_obra_exit(user.id, ts)
+    if result is None:
+        await update.message.reply_text(
+            "No tenés ninguna obra abierta.\n"
+            "Decí \"en obra\" para registrar tu llegada a una obra."
+        )
+        return
+
+    obra = db.get_obra(result["obra_id"])
+    hs   = result["total_hours"]
+    await update.message.reply_text(
+        f"*Salida de obra registrada*\n"
+        f"Obra:  {obra['name'] if obra else result['obra_id']}\n"
+        f"Hora:  {ts.strftime('%H:%M')}\n"
+        f"Horas en obra: {hs:.2f}",
+        parse_mode="Markdown",
+    )
+
+
 async def _mostrar_obras(message, context, action: str):
     """Muestra botones de obras activas. action = 'entro'."""
     obras = db.list_obras()
@@ -815,27 +871,23 @@ async def callback_obra(update: Update, context: ContextTypes.DEFAULT_TYPE):
     ts       = ahora()
 
     if action == "entro":
-        result = db.register_entry(user.id, ts, obra_id)
-        if result == "already_in":
-            status = db.get_today_status(user.id, ts.date())
-            hora   = status["entry_time"].strftime("%H:%M") if status else "?"
+        result = db.register_obra_entry(user.id, obra_id, ts)
+        if result == "already_in_obra":
+            abierta = db.get_open_obra_session(user.id)
+            o_ab    = db.get_obra(abierta["obra_id"]) if abierta else None
             await query.edit_message_text(
-                f"Ya tenés entrada a las {hora}.\n"
-                f"Registrá la salida primero con \"me voy\"."
+                f"Ya estás en {o_ab['name'] if o_ab else 'una obra'}.\n"
+                f"Decí \"salgo de obra\" para cerrarla primero."
             )
             return
-        n       = int(result.split("_")[1])
-        sesion  = f" (sesión {n})" if n > 1 else ""
-        nombre_obra = obra["name"] if obra else "Sin obra"
+        nombre_obra = obra["name"] if obra else obra_id
         await query.edit_message_text(
-            f"*Entrada registrada{sesion}*\n"
+            f"*Llegada a obra registrada*\n"
             f"Nombre: {employee['name']}\n"
             f"Obra:   {nombre_obra}\n"
-            f"Hora:   {ts.strftime('%H:%M')}\n"
-            f"Fecha:  {ts.strftime('%d/%m/%Y')}",
+            f"Hora:   {ts.strftime('%H:%M')}",
             parse_mode="Markdown",
         )
-        _backup_live()
 
 
 # ---------- comandos admin: obras ----------
@@ -889,9 +941,13 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await _pedir_nombre(update, context)
         return
 
-    # Prioridad 3: detectar entrada/salida por palabras clave
+    # Prioridad 3: detectar comandos de obra, luego fichaje del día
     text = update.message.text.lower().strip()
-    if any(p in text for p in PALABRAS_ENTRADA):
+    if any(p in text for p in PALABRAS_EN_OBRA):
+        await _en_obra(update, context)
+    elif any(p in text for p in PALABRAS_FIN_OBRA):
+        await _fin_obra(update, context)
+    elif any(p in text for p in PALABRAS_ENTRADA):
         await _hacer_entro(update, context)
     elif any(p in text for p in PALABRAS_SALIDA):
         await _hacer_salgo(update, context)

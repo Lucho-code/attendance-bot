@@ -416,13 +416,13 @@ def build_xlsx(db, records, titulo: str,
     if start_date and end_date:
         try:
             obras_rows = db.conn.execute("""
-                SELECT o.name obra_name, e.name emp_name,
-                       a.date, a.entry_time, a.exit_time, a.total_hours
-                FROM attendance a
-                JOIN employees e ON a.telegram_id = e.telegram_id
-                JOIN obras o ON a.obra_id = o.id
-                WHERE a.date BETWEEN ? AND ? AND a.obra_id IS NOT NULL
-                ORDER BY o.name, a.date, e.name
+                SELECT ob.name obra_name, e.name emp_name,
+                       os.date, os.entry_time, os.exit_time, os.total_hours
+                FROM obra_sessions os
+                JOIN employees e  ON os.telegram_id = e.telegram_id
+                JOIN obras ob ON os.obra_id = ob.id
+                WHERE os.date BETWEEN ? AND ?
+                ORDER BY ob.name, os.date, e.name
             """, (start_date.isoformat(), end_date.isoformat())).fetchall()
 
             if obras_rows:
