@@ -320,11 +320,18 @@ with tab_obras:
 
     with col_add:
         st.markdown("**Agregar obra**")
-        nueva_obra = st.text_input("Nombre de la nueva obra", placeholder="Ej: C02 - NUEVO CLIENTE")
+        if "nueva_obra_input" not in st.session_state:
+            st.session_state["nueva_obra_input"] = ""
+        nueva_obra = st.text_input(
+            "Nombre de la nueva obra",
+            placeholder="Ej: C02 - NUEVO CLIENTE",
+            key="nueva_obra_input",
+        )
         if st.button("➕ Agregar obra"):
             if nueva_obra.strip():
                 db.create_obra(nueva_obra.strip())
                 st.success(f"Obra agregada: {nueva_obra.strip()}")
+                st.session_state["nueva_obra_input"] = ""
                 st.rerun()
             else:
                 st.warning("Escribí el nombre de la obra.")
