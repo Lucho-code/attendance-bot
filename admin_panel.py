@@ -94,14 +94,38 @@ def tab_hoy_content():
     c4.metric("🟡 Sin salida",    sin_salida)
 
     st.divider()
-    st.dataframe(
-        pd.DataFrame(rows),
-        use_container_width=True,
-        hide_index=True,
-        column_config={
-            "Estado": st.column_config.TextColumn(width="medium"),
-        },
-    )
+
+    df = pd.DataFrame(rows)
+    col_cat = "categoria"
+
+    empleados_cat    = [e for e in empleados if e.get("categoria", "empleado") == "empleado"]
+    directivos_cat   = [e for e in empleados if e.get("categoria", "empleado") == "directivo"]
+
+    rows_emp = [r for r in rows if any(
+        e["name"] == r["Empleado 2H Mov. Suelos"] and e.get("categoria","empleado") == "empleado"
+        for e in empleados)]
+    rows_dir = [r for r in rows if any(
+        e["name"] == r["Empleado 2H Mov. Suelos"] and e.get("categoria","empleado") == "directivo"
+        for e in empleados)]
+
+    if rows_emp:
+        st.subheader("Empleados — 2H Mov. Suelos")
+        st.dataframe(
+            pd.DataFrame(rows_emp),
+            use_container_width=True,
+            hide_index=True,
+            column_config={"Estado": st.column_config.TextColumn(width="medium")},
+        )
+
+    if rows_dir:
+        st.subheader("Socios / Directivos")
+        st.dataframe(
+            pd.DataFrame(rows_dir),
+            use_container_width=True,
+            hide_index=True,
+            column_config={"Estado": st.column_config.TextColumn(width="medium")},
+        )
+
     st.caption(f"Actualizado: {ahora().strftime('%H:%M:%S')} · refresca cada 30 seg")
 
 with tab_hoy:

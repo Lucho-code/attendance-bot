@@ -104,6 +104,12 @@ class Database:
                 FOREIGN KEY (telegram_id) REFERENCES employees(telegram_id)
             );
         """)
+        # Migración segura: agrega columna categoria si no existe
+        cols = [r[1] for r in self.conn.execute("PRAGMA table_info(employees)").fetchall()]
+        if "categoria" not in cols:
+            self.conn.execute(
+                "ALTER TABLE employees ADD COLUMN categoria TEXT DEFAULT 'empleado'"
+            )
         self.conn.commit()
 
     def _seed_holidays(self):
@@ -140,6 +146,13 @@ class Database:
     def list_employees(self):
         rows = self.conn.execute("SELECT * FROM employees ORDER BY name").fetchall()
         return [dict(r) for r in rows]
+
+    def set_categoria(self, telegram_id: int, categoria: str):
+        self.conn.execute(
+            "UPDATE employees SET categoria = ? WHERE telegram_id = ?",
+            (categoria, telegram_id),
+        )
+        self.conn.commit()
 
     def find_employee_by_name(self, fragment: str):
         fragment = fragment.lower()

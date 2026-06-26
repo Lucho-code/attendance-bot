@@ -502,6 +502,50 @@ async def cmd_ver_fichajes(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("\n".join(lines), parse_mode="Markdown")
 
 
+# ---------- comando admin: categoria ----------
+
+CATEGORIAS = {
+    "empleado":  "Empleados 2H Mov. Suelos",
+    "directivo": "Socios / Directivos",
+}
+
+async def cmd_categoria(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Uso: /categoria Nombre empleado|directivo"""
+    if not es_admin(update.effective_user.id):
+        return
+    if len(context.args) < 2:
+        await update.message.reply_text(
+            "Uso: /categoria Nombre empleado|directivo\n"
+            "Ejemplo: /categoria Juan directivo"
+        )
+        return
+
+    cat_raw = context.args[-1].lower()
+    nombre  = " ".join(context.args[:-1])
+
+    if cat_raw not in CATEGORIAS:
+        await update.message.reply_text(
+            "Categorías válidas: empleado, directivo"
+        )
+        return
+
+    matches = db.find_employee_by_name(nombre)
+    if not matches:
+        await update.message.reply_text("No encontré ese empleado.")
+        return
+    if len(matches) > 1:
+        await update.message.reply_text(
+            f"Varios resultados: {', '.join(m['name'] for m in matches)}. Sé más específico."
+        )
+        return
+
+    emp = matches[0]
+    db.set_categoria(emp["telegram_id"], cat_raw)
+    await update.message.reply_text(
+        f"{emp['name']} → {CATEGORIAS[cat_raw]}"
+    )
+
+
 # ---------- comando admin: turnos ----------
 
 async def cmd_turno(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -998,6 +1042,7 @@ def main():
     app.add_handler(CommandHandler("borrar",       cmd_borrar_fichaje))
     app.add_handler(CommandHandler("ver",          cmd_ver_fichajes))
     app.add_handler(CommandHandler("turno",        cmd_turno))
+    app.add_handler(CommandHandler("categoria",    cmd_categoria))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND,     handle_text))
     app.add_handler(MessageHandler(filters.LOCATION,                    handle_location))
 
