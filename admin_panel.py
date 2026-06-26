@@ -95,36 +95,26 @@ def tab_hoy_content():
 
     st.divider()
 
-    df = pd.DataFrame(rows)
-    col_cat = "categoria"
+    # Mapa nombre -> categoria para separar secciones
+    cat_map = {e["name"]: e.get("categoria", "empleado") for e in empleados}
 
-    empleados_cat    = [e for e in empleados if e.get("categoria", "empleado") == "empleado"]
-    directivos_cat   = [e for e in empleados if e.get("categoria", "empleado") == "directivo"]
+    secciones = [
+        ("empleado",          "Empleados"),
+        ("administracion",    "Administración"),
+        ("direccion_tecnica", "Dirección Técnica"),
+    ]
 
-    rows_emp = [r for r in rows if any(
-        e["name"] == r["Empleado 2H Mov. Suelos"] and e.get("categoria","empleado") == "empleado"
-        for e in empleados)]
-    rows_dir = [r for r in rows if any(
-        e["name"] == r["Empleado 2H Mov. Suelos"] and e.get("categoria","empleado") == "directivo"
-        for e in empleados)]
-
-    if rows_emp:
-        st.subheader("Empleados — 2H Mov. Suelos")
-        st.dataframe(
-            pd.DataFrame(rows_emp),
-            use_container_width=True,
-            hide_index=True,
-            column_config={"Estado": st.column_config.TextColumn(width="medium")},
-        )
-
-    if rows_dir:
-        st.subheader("Socios / Directivos")
-        st.dataframe(
-            pd.DataFrame(rows_dir),
-            use_container_width=True,
-            hide_index=True,
-            column_config={"Estado": st.column_config.TextColumn(width="medium")},
-        )
+    col_key = "Empleado 2H Mov. Suelos"
+    for cat_key, cat_label in secciones:
+        filas = [r for r in rows if cat_map.get(r[col_key]) == cat_key]
+        if filas:
+            st.subheader(cat_label)
+            st.dataframe(
+                pd.DataFrame(filas),
+                use_container_width=True,
+                hide_index=True,
+                column_config={"Estado": st.column_config.TextColumn(width="medium")},
+            )
 
     st.caption(f"Actualizado: {ahora().strftime('%H:%M:%S')} · refresca cada 30 seg")
 

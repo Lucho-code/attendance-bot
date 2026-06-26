@@ -505,8 +505,9 @@ async def cmd_ver_fichajes(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # ---------- comando admin: categoria ----------
 
 CATEGORIAS = {
-    "empleado":  "Empleados 2H Mov. Suelos",
-    "directivo": "Socios / Directivos",
+    "empleado":          "Empleados",
+    "administracion":    "Administración",
+    "direccion_tecnica": "Dirección Técnica",
 }
 
 async def cmd_categoria(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -525,7 +526,7 @@ async def cmd_categoria(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if cat_raw not in CATEGORIAS:
         await update.message.reply_text(
-            "Categorías válidas: empleado, directivo"
+            "Categorías válidas: empleado, administracion, direccion_tecnica"
         )
         return
 
