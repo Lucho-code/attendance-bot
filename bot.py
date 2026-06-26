@@ -152,7 +152,10 @@ async def _hacer_entro(update: Update, context: ContextTypes.DEFAULT_TYPE = None
         else:
             await update.message.reply_text("Primero registrate enviando /start")
         return
-    if REQUIRE_LOCATION and not ubicacion_verificada:
+    emp_cat = db.get_employee(user.id).get("categoria", "empleado") if db.get_employee(user.id) else "empleado"
+    necesita_ubicacion = (REQUIRE_LOCATION and emp_cat == "empleado" and
+                          bool(OFFICE_LAT and OFFICE_LON) and not ubicacion_verificada)
+    if necesita_ubicacion:
         await update.message.reply_text(
             "Para registrar entrada compartí tu ubicación.\n"
             "Tocá el clip > Ubicación > Compartir ubicación."
@@ -193,7 +196,10 @@ async def _hacer_salgo(update: Update, context: ContextTypes.DEFAULT_TYPE = None
         else:
             await update.message.reply_text("Primero registrate enviando /start")
         return
-    if REQUIRE_LOCATION and not ubicacion_verificada:
+    emp_cat2 = db.get_employee(user.id).get("categoria", "empleado") if db.get_employee(user.id) else "empleado"
+    necesita_ubicacion2 = (REQUIRE_LOCATION and emp_cat2 == "empleado" and
+                           bool(OFFICE_LAT and OFFICE_LON) and not ubicacion_verificada)
+    if necesita_ubicacion2:
         await update.message.reply_text(
             "Para registrar salida compartí tu ubicación.\n"
             "Tocá el clip > Ubicación > Compartir ubicación."
