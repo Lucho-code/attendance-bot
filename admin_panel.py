@@ -37,24 +37,65 @@ st.markdown("""
 <style>
   .stDeployButton { display: none !important; }
   #MainMenu { visibility: hidden; }
-  footer { visibility: hidden; }
+  footer    { visibility: hidden; }
 
-  /* Acento amarillo 2H en botones primarios */
-  .stButton > button[kind="primary"],
-  div[data-testid="stMetric"] label { color: #737869 !important; }
+  /* Métricas estilo dashboard oscuro */
+  div[data-testid="stMetric"] {
+    background: #2C2C28;
+    border-radius: 10px;
+    padding: 16px 20px;
+    border-left: 3px solid #E8E800;
+  }
+  div[data-testid="stMetric"] label {
+    color: #ECEFCA !important;
+    opacity: 0.7;
+    font-size: 12px;
+  }
+  div[data-testid="stMetric"] [data-testid="stMetricValue"] {
+    color: #ECEFCA !important;
+    font-size: 28px;
+    font-weight: 700;
+  }
 
-  /* Header personalizado */
+  /* Tabs estilo oscuro con acento amarillo */
+  .stTabs [data-baseweb="tab-list"] {
+    background: #2C2C28;
+    border-radius: 8px;
+    padding: 4px;
+    gap: 4px;
+  }
+  .stTabs [data-baseweb="tab"] {
+    border-radius: 6px;
+    color: #ECEFCA !important;
+    opacity: 0.6;
+  }
+  .stTabs [aria-selected="true"] {
+    background: #E8E800 !important;
+    color: #1E1E1B !important;
+    opacity: 1 !important;
+    font-weight: 600;
+  }
+
+  /* Dataframes */
+  .stDataFrame { border-radius: 10px; overflow: hidden; }
+
+  /* Expanders */
+  .streamlit-expanderHeader {
+    background: #2C2C28 !important;
+    border-radius: 8px;
+  }
+
+  /* Header */
   .header-2h {
     display: flex;
     align-items: center;
     gap: 16px;
-    padding: 8px 0 16px;
+    padding: 12px 0 16px;
     border-bottom: 2px solid #E8E800;
-    margin-bottom: 16px;
+    margin-bottom: 20px;
   }
-  .header-2h svg { flex-shrink: 0; }
-  .header-title { font-size: 22px; font-weight: 600; color: #ECEFCA; line-height: 1.2; }
-  .header-sub { font-size: 12px; color: #ECEFCA; opacity: 0.7; margin-top: 2px; }
+  .header-title { font-size: 22px; font-weight: 700; color: #ECEFCA; line-height: 1.2; }
+  .header-sub   { font-size: 11px; color: #ECEFCA; opacity: 0.5; margin-top: 3px; }
 </style>
 """, unsafe_allow_html=True)
 
