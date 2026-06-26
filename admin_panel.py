@@ -209,11 +209,12 @@ def tab_hoy_content():
             "Extra 100%":   e100,
         })
 
-    c1, c2, c3, c4 = st.columns(4)
-    c1.metric("Total empleados",  len(empleados))
-    c2.metric("🟢 Dentro ahora",  presentes)
-    c3.metric("🔴 Sin registrar", ausentes)
-    c4.metric("🟡 Sin salida",    sin_salida)
+    c1, c2, c3, c4, c5 = st.columns(5)
+    c1.metric("Total",            len(empleados))
+    c2.metric("🟢 Dentro",        presentes)
+    c3.metric("🔵 Salieron",      salieron)
+    c4.metric("🔴 Sin registrar", ausentes)
+    c5.metric("🟡 Sin salida",    sin_salida)
 
     st.divider()
 
