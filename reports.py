@@ -306,16 +306,24 @@ def build_xlsx(db, records, titulo: str,
                     color_row(ws, cur_row, absence)
 
                 elif record and record.get("entry_time") and record.get("exit_time"):
-                    n, e50, e100 = calcular_horas(
-                        record["entry_time"], record["exit_time"], weekday, False)
-                    ws.cell(cur_row, 3, "Trabajó")
+                    # Sumar horas de todas las sesiones del día
+                    sessions  = record.get("sessions", [record])
+                    n = e50 = e100 = 0.0
+                    for s in sessions:
+                        if s.get("entry_time") and s.get("exit_time"):
+                            sn, se50, se100 = calcular_horas(
+                                s["entry_time"], s["exit_time"], weekday, False)
+                            n += sn; e50 += se50; e100 += se100
+                    n_ses = record.get("session_count", 1)
+                    label = f"Trabajó ({n_ses} salidas)" if n_ses > 1 else "Trabajó"
+                    ws.cell(cur_row, 3, label)
                     c = ws.cell(cur_row, col_entry,
                                 record["entry_time"].replace(tzinfo=None).time())
                     c.number_format = "HH:MM"
                     c = ws.cell(cur_row, col_exit,
                                 record["exit_time"].replace(tzinfo=None).time())
                     c.number_format = "HH:MM"
-                    _write_hours(cur_row, n, e50, e100)
+                    _write_hours(cur_row, round(n,2), round(e50,2), round(e100,2))
 
                 elif record and record.get("entry_time"):
                     ws.cell(cur_row, 3, "Sin salida")

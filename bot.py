@@ -170,12 +170,16 @@ async def _hacer_entro(update: Update, context: ContextTypes.DEFAULT_TYPE = None
         status = db.get_today_status(user.id, ts.date())
         hora = status["entry_time"].strftime("%H:%M") if status else "?"
         await update.message.reply_text(
-            f"Ya registraste entrada hoy a las {hora}."
+            f"Ya tenés entrada registrada a las {hora}.\n"
+            f"Registrá la salida primero con \"me voy\"."
         )
         return
 
+    # result es "ok_N" donde N es el número de sesión
+    n_sesion = int(result.split("_")[1])
+    sesion_txt = "" if n_sesion == 1 else f" (sesión {n_sesion})"
     await update.message.reply_text(
-        f"*Entrada registrada*\n"
+        f"*Entrada registrada{sesion_txt}*\n"
         f"Nombre: {employee['name']}\n"
         f"Hora:   {ts.strftime('%H:%M')}\n"
         f"Fecha:  {ts.strftime('%d/%m/%Y')}",
@@ -217,24 +221,28 @@ async def _hacer_salgo(update: Update, context: ContextTypes.DEFAULT_TYPE = None
             )
         return
 
-    # Obtener registro completo para calcular horas por franja
-    status    = db.get_today_status(user.id, ts.date())
-    is_hday   = bool(db.is_holiday(ts.date()))
-    weekday   = ts.weekday()
+    # Calcular horas de esta sesión
+    status  = db.get_today_status(user.id, ts.date())
+    is_hday = bool(db.is_holiday(ts.date()))
 
     norm = e50 = e100 = 0.0
     if status and status.get("entry_time") and status.get("exit_time"):
         norm, e50, e100 = calcular_horas(
-            status["entry_time"], status["exit_time"], weekday, is_hday)
+            status["entry_time"], status["exit_time"], ts.weekday(), is_hday)
+
+    daily_total   = status.get("daily_total", 0) if status else 0
+    session_count = status.get("session_count", 1) if status else 1
 
     msg = (
         f"*Salida registrada*\n"
         f"Nombre: {employee['name']}\n"
         f"Hora:   {ts.strftime('%H:%M')}\n"
     )
-    if norm  > 0: msg += f"Hs. normales:    {norm:.2f}\n"
-    if e50   > 0: msg += f"Hs. extra 50%:   {e50:.2f}\n"
-    if e100  > 0: msg += f"Hs. extra 100%:  {e100:.2f}\n"
+    if norm  > 0: msg += f"Hs. normales:   {norm:.2f}\n"
+    if e50   > 0: msg += f"Hs. extra 50%:  {e50:.2f}\n"
+    if e100  > 0: msg += f"Hs. extra 100%: {e100:.2f}\n"
+    if session_count > 1:
+        msg += f"\nTotal acumulado hoy: *{daily_total:.2f} hs* ({session_count} sesiones)"
 
     await update.message.reply_text(msg.strip(), parse_mode="Markdown")
 

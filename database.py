@@ -149,20 +149,27 @@ class Database:
     # ---------- attendance ----------
 
     def register_entry(self, telegram_id: int, timestamp: datetime) -> str:
+        """Permite múltiples entradas por día. Solo bloquea si hay entrada abierta."""
         today = timestamp.date().isoformat()
-        existing = self.conn.execute(
-            "SELECT id FROM attendance WHERE telegram_id = ? AND date = ?",
+        open_entry = self.conn.execute(
+            """SELECT id FROM attendance
+               WHERE telegram_id = ? AND date = ? AND exit_time IS NULL""",
             (telegram_id, today),
         ).fetchone()
-        if existing:
+        if open_entry:
             return "already_in"
+        # Contar sesiones del día para informar al empleado
+        count = self.conn.execute(
+            "SELECT COUNT(*) FROM attendance WHERE telegram_id = ? AND date = ?",
+            (telegram_id, today),
+        ).fetchone()[0]
         self.conn.execute(
             "INSERT INTO attendance (telegram_id, date, entry_time) VALUES (?, ?, ?)",
             (telegram_id, today, timestamp.isoformat()),
         )
         self.conn.commit()
         _backup_live()
-        return "ok"
+        return f"ok_{count + 1}"   # ok_1 = primera entrada, ok_2 = segunda, etc.
 
     def register_exit(self, telegram_id: int, timestamp: datetime):
         today = timestamp.date().isoformat()
@@ -187,18 +194,102 @@ class Database:
         return {"total_hours": total_hours}
 
     def get_today_status(self, telegram_id: int, today: date):
-        record = self.conn.execute(
-            "SELECT * FROM attendance WHERE telegram_id = ? AND date = ?",
+        """Devuelve la entrada abierta actual (si existe) más el total acumulado del día."""
+        open_rec = self.conn.execute(
+            """SELECT * FROM attendance
+               WHERE telegram_id = ? AND date = ? AND exit_time IS NULL
+               ORDER BY entry_time DESC LIMIT 1""",
             (telegram_id, today.isoformat()),
         ).fetchone()
-        if not record:
+
+        # Total horas de sesiones cerradas
+        daily_total = self.conn.execute(
+            """SELECT COALESCE(SUM(total_hours), 0) FROM attendance
+               WHERE telegram_id = ? AND date = ? AND exit_time IS NOT NULL""",
+            (telegram_id, today.isoformat()),
+        ).fetchone()[0]
+
+        # Cantidad de sesiones
+        session_count = self.conn.execute(
+            "SELECT COUNT(*) FROM attendance WHERE telegram_id = ? AND date = ?",
+            (telegram_id, today.isoformat()),
+        ).fetchone()[0]
+
+        if open_rec:
+            r = dict(open_rec)
+            for field in ("entry_time", "exit_time"):
+                if r[field]:
+                    dt = datetime.fromisoformat(r[field])
+                    r[field] = TIMEZONE.localize(dt) if dt.tzinfo is None else dt.astimezone(TIMEZONE)
+            r["daily_total"] = daily_total
+            r["session_count"] = session_count
+            return r
+
+        # Sin entrada abierta → devolver último registro cerrado
+        last = self.conn.execute(
+            """SELECT * FROM attendance
+               WHERE telegram_id = ? AND date = ?
+               ORDER BY exit_time DESC LIMIT 1""",
+            (telegram_id, today.isoformat()),
+        ).fetchone()
+        if not last:
             return None
-        r = dict(record)
+        r = dict(last)
         for field in ("entry_time", "exit_time"):
             if r[field]:
                 dt = datetime.fromisoformat(r[field])
                 r[field] = TIMEZONE.localize(dt) if dt.tzinfo is None else dt.astimezone(TIMEZONE)
+        r["daily_total"]   = daily_total
+        r["session_count"] = session_count
         return r
+
+    def get_daily_sessions(self, telegram_id: int, today: date) -> list:
+        """Devuelve todas las sesiones del día para calcular horas totales."""
+        rows = self.conn.execute(
+            """SELECT * FROM attendance
+               WHERE telegram_id = ? AND date = ?
+               ORDER BY entry_time ASC""",
+            (telegram_id, today.isoformat()),
+        ).fetchall()
+        return [self._parse_times(dict(r)) for r in rows]
+
+    def _aggregate_sessions(self, raw_rows: list) -> list:
+        """Agrupa múltiples sesiones por (empleado, día) en un solo registro."""
+        from collections import OrderedDict
+        grouped = OrderedDict()
+        for r in raw_rows:
+            key = (r["telegram_id"], r["name"], r["date"])
+            if key not in grouped:
+                grouped[key] = {
+                    "telegram_id": r["telegram_id"],
+                    "name":        r["name"],
+                    "date":        r["date"],
+                    "sessions":    [],
+                }
+            grouped[key]["sessions"].append(r)
+
+        result = []
+        for g in grouped.values():
+            sessions    = g["sessions"]
+            closed      = [s for s in sessions if s.get("exit_time")]
+            has_open    = any(s for s in sessions if not s.get("exit_time"))
+            total_hours = sum(s["total_hours"] or 0 for s in closed)
+
+            entry_times = [s["entry_time"] for s in sessions if s.get("entry_time")]
+            exit_times  = [s["exit_time"]  for s in closed]
+
+            result.append({
+                "telegram_id":   g["telegram_id"],
+                "name":          g["name"],
+                "date":          g["date"],
+                "entry_time":    entry_times[0] if entry_times else None,
+                "exit_time":     exit_times[-1] if exit_times and not has_open else None,
+                "total_hours":   total_hours if total_hours > 0 else None,
+                "sessions":      sessions,
+                "session_count": len(sessions),
+                "has_open":      has_open,
+            })
+        return result
 
     def get_records_by_period(self, start: date, end: date):
         rows = self.conn.execute("""
@@ -206,18 +297,20 @@ class Database:
             FROM attendance a
             JOIN employees e ON a.telegram_id = e.telegram_id
             WHERE a.date BETWEEN ? AND ?
-            ORDER BY a.date ASC, e.name ASC
+            ORDER BY a.date ASC, e.name ASC, a.entry_time ASC
         """, (start.isoformat(), end.isoformat())).fetchall()
-        return [self._parse_times(dict(r)) for r in rows]
+        parsed = [self._parse_times(dict(r)) for r in rows]
+        return self._aggregate_sessions(parsed)
 
     def get_all_records(self):
         rows = self.conn.execute("""
             SELECT e.telegram_id, e.name, a.date, a.entry_time, a.exit_time, a.total_hours
             FROM attendance a
             JOIN employees e ON a.telegram_id = e.telegram_id
-            ORDER BY a.date DESC, e.name ASC
+            ORDER BY a.date DESC, e.name ASC, a.entry_time ASC
         """).fetchall()
-        return [self._parse_times(dict(r)) for r in rows]
+        parsed = [self._parse_times(dict(r)) for r in rows]
+        return self._aggregate_sessions(parsed)
 
     def get_employees_without_entry(self, today: date) -> list:
         rows = self.conn.execute("""
