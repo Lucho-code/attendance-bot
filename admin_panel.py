@@ -181,15 +181,22 @@ def tab_hoy_content():
 
         ent = st_hoy["entry_time"].strftime("%H:%M") if st_hoy and st_hoy.get("entry_time") else "–"
         sal = st_hoy["exit_time"].strftime("%H:%M")  if st_hoy and st_hoy.get("exit_time")  else "–"
-        hs  = f"{st_hoy['total_hours']:.2f}"         if st_hoy and st_hoy.get("total_hours") else "–"
 
-        e50 = e100 = "–"
-        if st_hoy and st_hoy.get("entry_time") and st_hoy.get("exit_time"):
+        # Calcular horas con tolerancia aplicada (por sesión, sumando todas)
+        n_tot = e50_tot = e100_tot = 0.0
+        if st_hoy:
             is_holiday = bool(db.is_holiday(hoy))
-            n, ex50, ex100 = calcular_horas(
-                st_hoy["entry_time"], st_hoy["exit_time"], hoy.weekday(), is_holiday)
-            e50  = f"{ex50:.2f}"  if ex50  > 0 else "–"
-            e100 = f"{ex100:.2f}" if ex100 > 0 else "–"
+            for s in db.get_daily_sessions(emp["telegram_id"], hoy):
+                if s.get("entry_time") and s.get("exit_time"):
+                    sn, se50, se100 = calcular_horas(
+                        s["entry_time"], s["exit_time"], hoy.weekday(), is_holiday)
+                    n_tot   += sn
+                    e50_tot += se50
+                    e100_tot += se100
+
+        hs   = f"{n_tot:.2f}"   if n_tot   > 0 else "–"
+        e50  = f"{e50_tot:.2f}" if e50_tot  > 0 else "–"
+        e100 = f"{e100_tot:.2f}"if e100_tot > 0 else "–"
 
         rows.append({
             "Empleado 2H Mov. Suelos": emp["name"],
@@ -242,7 +249,12 @@ def tab_hoy_content():
                         for i, s in enumerate(sesiones, 1):
                             ent = s["entry_time"].strftime("%H:%M") if s.get("entry_time") else "–"
                             sal = s["exit_time"].strftime("%H:%M")  if s.get("exit_time")  else "Abierta"
-                            hs  = f"{s['total_hours']:.2f}"         if s.get("total_hours") else "–"
+                            if s.get("entry_time") and s.get("exit_time"):
+                                is_h = bool(db.is_holiday(hoy))
+                                sn, se50, se100 = calcular_horas(s["entry_time"], s["exit_time"], hoy.weekday(), is_h)
+                                hs = f"{sn + se50 + se100:.2f}"
+                            else:
+                                hs = "–"
                             ses_rows.append({
                                 "Sesión": f"#{i}",
                                 "Entrada": ent,
@@ -298,7 +310,13 @@ with tab_emp:
                 for r in records:
                     ent = r["entry_time"].strftime("%H:%M") if r.get("entry_time") else "–"
                     sal = r["exit_time"].strftime("%H:%M")  if r.get("exit_time")  else "Sin salida"
-                    hs  = f"{r['total_hours']:.2f}"         if r.get("total_hours") else "–"
+                    if r.get("entry_time") and r.get("exit_time"):
+                        d = date.fromisoformat(r["date"])
+                        is_h = bool(db.is_holiday(d))
+                        rn, re50, re100 = calcular_horas(r["entry_time"], r["exit_time"], d.weekday(), is_h)
+                        hs = f"{rn + re50 + re100:.2f}"
+                    else:
+                        hs = "–"
                     rows_rec.append({"Fecha": r["date"], "Entrada": ent,
                                      "Salida": sal, "Horas": hs})
                 st.dataframe(pd.DataFrame(rows_rec), use_container_width=True,
@@ -414,7 +432,13 @@ with tab_obras:
                     for r in registros:
                         ent = r["entry_time"].strftime("%H:%M") if r.get("entry_time") else "–"
                         sal = r["exit_time"].strftime("%H:%M")  if r.get("exit_time")  else "Abierta"
-                        hs  = f"{r['total_hours']:.2f}"         if r.get("total_hours") else "–"
+                        if r.get("entry_time") and r.get("exit_time"):
+                            d = date.fromisoformat(r["date"])
+                            is_h = bool(db.is_holiday(d))
+                            on, oe50, oe100 = calcular_horas(r["entry_time"], r["exit_time"], d.weekday(), is_h)
+                            hs = f"{on + oe50 + oe100:.2f}"
+                        else:
+                            hs = "–"
                         filas.append({
                             "Empleado": r["name"],
                             "Fecha":    r["date"],
