@@ -335,6 +335,60 @@ async def cmd_empleados(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("\n".join(lines), parse_mode="Markdown")
 
 
+_whisper_model = None
+
+def _get_whisper():
+    global _whisper_model
+    if _whisper_model is None:
+        import whisper as _w
+        _whisper_model = _w.load_model("base")
+    return _whisper_model
+
+
+async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Transcribe el audio del empleado y lo procesa como si fuera texto."""
+    user = update.effective_user
+
+    if await _guardar_nombre(update, context):
+        return
+    if not db.get_employee(user.id):
+        await _pedir_nombre(update, context)
+        return
+
+    await update.message.reply_text("Escuchando...")
+
+    import tempfile
+    voz   = update.message.voice
+    vfile = await voz.get_file()
+
+    with tempfile.NamedTemporaryFile(suffix=".ogg", delete=False) as tmp:
+        tmp_path = tmp.name
+
+    try:
+        await vfile.download_to_drive(tmp_path)
+        model  = _get_whisper()
+        result = model.transcribe(tmp_path, language="es", fp16=False)
+        texto  = result["text"].strip().lower()
+
+        if any(p in texto for p in PALABRAS_ENTRADA):
+            await _hacer_entro(update, context)
+        elif any(p in texto for p in PALABRAS_SALIDA):
+            await _hacer_salgo(update, context)
+        else:
+            await update.message.reply_text(
+                f'Escuché: "{texto}"\n\n'
+                "No reconocí el comando. Decí claramente:\n"
+                "  Entrada: llegué · entré · arranqué\n"
+                "  Salida:  me voy · salí · terminé"
+            )
+    except Exception as e:
+        await update.message.reply_text(
+            "No pude procesar el audio. Escribí el comando directamente."
+        )
+    finally:
+        os.remove(tmp_path)
+
+
 async def handle_location(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Procesa ubicación compartida para fichaje con verificación geográfica."""
     user = update.effective_user
@@ -1045,6 +1099,7 @@ def main():
     app.add_handler(CommandHandler("turno",        cmd_turno))
     app.add_handler(CommandHandler("categoria",    cmd_categoria))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND,     handle_text))
+    app.add_handler(MessageHandler(filters.VOICE,                       handle_voice))
     app.add_handler(MessageHandler(filters.LOCATION,                    handle_location))
 
     jq = app.job_queue
