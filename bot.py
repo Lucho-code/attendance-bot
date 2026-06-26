@@ -85,8 +85,8 @@ async def _pedir_nombre(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Pide el nombre al usuario y activa el flag de espera."""
     context.user_data[AWAITING_NAME] = True
     await update.message.reply_text(
-        "Hola! Para registrarte necesito tu nombre completo.\n"
-        "¿Cómo te llamás?"
+        "Hola! Para registrarte escribí tu nombre.\n"
+        "Solo el nombre de pila, por ejemplo: Juan"
     )
 
 
@@ -94,7 +94,12 @@ async def _guardar_nombre(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     """Si hay un nombre pendiente, lo guarda y devuelve True."""
     if not context.user_data.get(AWAITING_NAME):
         return False
-    name = update.message.text.strip()
+    # Solo el primer nombre, capitalizado correctamente sin importar mayúsculas
+    raw  = update.message.text.strip().split()[0] if update.message.text.strip() else ""
+    if not raw:
+        await update.message.reply_text("Escribí tu nombre para registrarte.")
+        return True
+    name = raw.capitalize()
     db.register_employee(update.effective_user.id, name)
     context.user_data[AWAITING_NAME] = False
     await update.message.reply_text(
@@ -865,8 +870,24 @@ async def job_quincena(context: CallbackContext):
 
 # ---------- main ----------
 
+_INSTANCE_LOCK = None   # mantiene el socket vivo durante toda la ejecución
+
+def _verificar_instancia_unica():
+    """Usa un socket como lock. Si ya hay un bot corriendo, esta instancia sale sin error."""
+    import socket, sys
+    global _INSTANCE_LOCK
+    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    try:
+        sock.bind(("127.0.0.1", 47382))
+        _INSTANCE_LOCK = sock    # guardado globalmente para que no lo cierre el GC
+    except OSError:
+        print("Bot ya está corriendo. Esta instancia no iniciará.")
+        sys.exit(0)
+
+
 def main():
     import asyncio
+    _verificar_instancia_unica()
     asyncio.set_event_loop(asyncio.new_event_loop())
 
     if not TOKEN:

@@ -36,7 +36,7 @@ ABSENCE_LABELS = {
 
 class Database:
     def __init__(self):
-        self.conn = sqlite3.connect(DB_PATH, check_same_thread=False)
+        self.conn = sqlite3.connect(DB_PATH, check_same_thread=False, timeout=30)
         self.conn.row_factory = sqlite3.Row
         self._init_tables()
         self._seed_holidays()
