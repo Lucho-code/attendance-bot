@@ -41,7 +41,7 @@ st.markdown("""
 
   /* ── Métricas tipo Dashcube ── */
   div[data-testid="stMetric"] {
-    background: #242421;
+    background: #333330;
     border-radius: 12px;
     padding: 20px 24px;
     border: 1px solid rgba(232,232,0,0.12);
@@ -86,7 +86,7 @@ st.markdown("""
 
   /* ── Expanders ── */
   .streamlit-expanderHeader {
-    background: #242421 !important;
+    background: #333330 !important;
     border: 1px solid rgba(236,239,202,0.08) !important;
     border-radius: 10px !important;
   }
@@ -96,7 +96,7 @@ st.markdown("""
 
   /* ── Inputs y selects ── */
   .stTextInput input, .stSelectbox select {
-    background: #242421 !important;
+    background: #333330 !important;
     border: 1px solid rgba(236,239,202,0.15) !important;
     border-radius: 8px !important;
   }
