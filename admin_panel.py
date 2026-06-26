@@ -304,6 +304,39 @@ with tab_obras:
             st.subheader("Obras cerradas")
             st.caption(", ".join(o["name"] for o in obras_cerradas))
 
+    st.divider()
+    st.subheader("Gestión de obras")
+
+    col_add, col_close = st.columns(2)
+
+    with col_add:
+        st.markdown("**Agregar obra**")
+        nueva_obra = st.text_input("Nombre de la nueva obra", placeholder="Ej: C02 - NUEVO CLIENTE")
+        if st.button("➕ Agregar obra"):
+            if nueva_obra.strip():
+                db.create_obra(nueva_obra.strip())
+                st.success(f"Obra agregada: {nueva_obra.strip()}")
+                st.rerun()
+            else:
+                st.warning("Escribí el nombre de la obra.")
+
+    with col_close:
+        st.markdown("**Cerrar obra**")
+        obras_act = db.list_obras(active_only=True)
+        if obras_act:
+            obra_cerrar = st.selectbox(
+                "Seleccioná la obra a cerrar",
+                options=[o["name"] for o in obras_act],
+                key="selectbox_cerrar"
+            )
+            if st.button("🔴 Cerrar obra"):
+                cerradas = db.close_obra(obra_cerrar)
+                if cerradas:
+                    st.success(f"Obra cerrada: {obra_cerrar}")
+                    st.rerun()
+        else:
+            st.info("No hay obras activas para cerrar.")
+
 # ── TAB 5: Normas operativas ──────────────────────────────────────────────────
 with tab_normas:
     st.subheader("Horario de trabajo")
