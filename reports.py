@@ -412,6 +412,64 @@ def build_xlsx(db, records, titulo: str,
             ws_res.cell(grand_row, c, 0).font = tot_font
             ws_res.cell(grand_row, c).fill = tot_fill
 
+    # ── Hoja Obras (si hay datos) ─────────────────────────────────────────────
+    if start_date and end_date:
+        try:
+            obras_rows = db.conn.execute("""
+                SELECT o.name obra_name, e.name emp_name,
+                       a.date, a.entry_time, a.exit_time, a.total_hours
+                FROM attendance a
+                JOIN employees e ON a.telegram_id = e.telegram_id
+                JOIN obras o ON a.obra_id = o.id
+                WHERE a.date BETWEEN ? AND ? AND a.obra_id IS NOT NULL
+                ORDER BY o.name, a.date, e.name
+            """, (start_date.isoformat(), end_date.isoformat())).fetchall()
+
+            if obras_rows:
+                ws_o = wb.create_sheet(title="Obras")
+                for col, h in enumerate(["Obra", "Empleado", "Fecha",
+                                         "Entrada", "Salida", "Horas"], start=1):
+                    c = ws_o.cell(1, col, h)
+                    c.fill = hdr_fill; c.font = hdr_font
+                    c.alignment = Alignment(horizontal="center")
+
+                for i, r in enumerate(obras_rows, start=2):
+                    ws_o.cell(i, 1, r["obra_name"])
+                    ws_o.cell(i, 2, r["emp_name"])
+                    ws_o.cell(i, 3, r["date"])
+                    ent = r["entry_time"]
+                    sal = r["exit_time"]
+                    if ent:
+                        dt = datetime.fromisoformat(ent)
+                        c  = ws_o.cell(i, 4, (TIMEZONE.localize(dt) if dt.tzinfo is None
+                                               else dt.astimezone(TIMEZONE)).replace(tzinfo=None).time())
+                        c.number_format = "HH:MM"
+                    if sal:
+                        dt = datetime.fromisoformat(sal)
+                        c  = ws_o.cell(i, 5, (TIMEZONE.localize(dt) if dt.tzinfo is None
+                                               else dt.astimezone(TIMEZONE)).replace(tzinfo=None).time())
+                        c.number_format = "HH:MM"
+                    if r["total_hours"]:
+                        ws_o.cell(i, 6, round(r["total_hours"], 2)).number_format = "0.00"
+
+                for ltr, w in zip("ABCDEF", [28, 22, 12, 10, 10, 10]):
+                    ws_o.column_dimensions[ltr].width = w
+
+                # Totales por obra
+                from collections import defaultdict
+                tot_obra = defaultdict(float)
+                for r in obras_rows:
+                    if r["total_hours"]:
+                        tot_obra[r["obra_name"]] += r["total_hours"]
+
+                tot_row = len(obras_rows) + 3
+                ws_o.cell(tot_row, 1, "TOTAL POR OBRA").font = Font(bold=True)
+                for j, (nombre, horas) in enumerate(sorted(tot_obra.items()), start=tot_row + 1):
+                    ws_o.cell(j, 1, nombre)
+                    ws_o.cell(j, 6, round(horas, 2)).number_format = "0.00"
+        except Exception:
+            pass  # Si algo falla, el resto del reporte sigue igual
+
     buf = io.BytesIO()
     wb.save(buf)
     buf.seek(0)

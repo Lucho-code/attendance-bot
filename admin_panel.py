@@ -264,45 +264,54 @@ with tab_obras:
         obras_activas = [o for o in obras if o["active"]]
         obras_cerradas = [o for o in obras if not o["active"]]
 
-        if obras_activas:
-            st.subheader("Obras activas")
-            for obra in obras_activas:
-                registros = db.get_obra_hours(obra["id"], start, hoy)
-
-                # Quién está en la obra ahora mismo
-                en_obra = []
+        def _render_obra(obra, activa: bool):
+            registros = db.get_obra_hours(obra["id"], start, hoy)
+            total_hs  = sum(r.get("total_hours") or 0 for r in registros)
+            en_obra   = []
+            if activa:
                 for emp in db.list_employees():
                     st_hoy = db.get_today_status(emp["telegram_id"], hoy)
                     if (st_hoy and st_hoy.get("obra_id") == obra["id"]
                             and st_hoy.get("entry_time") and not st_hoy.get("exit_time")):
                         en_obra.append(emp["name"])
 
-                total_hs = sum(r.get("total_hours") or 0 for r in registros)
+            estado = "🟢" if activa else "🔴"
+            header = (f"{estado} **{obra['name']}** — {total_hs:.1f} hs este mes"
+                      + (f" · {', '.join(en_obra)}" if en_obra else ""))
 
-                with st.expander(
-                    f"**{obra['name']}** — {total_hs:.1f} hs este mes"
-                    + (f" · 🟢 {', '.join(en_obra)}" if en_obra else "")
-                ):
-                    if registros:
-                        filas = []
-                        for r in registros:
-                            ent = r["entry_time"].strftime("%H:%M") if r.get("entry_time") else "–"
-                            sal = r["exit_time"].strftime("%H:%M")  if r.get("exit_time")  else "Abierta"
-                            hs  = f"{r['total_hours']:.2f}"         if r.get("total_hours") else "–"
-                            filas.append({
-                                "Empleado": r["name"],
-                                "Fecha":    r["date"],
-                                "Entrada":  ent,
-                                "Salida":   sal,
-                                "Horas":    hs,
-                            })
-                        st.dataframe(pd.DataFrame(filas), use_container_width=True, hide_index=True)
-                    else:
-                        st.caption("Sin registros este mes.")
+            with st.expander(header):
+                if registros:
+                    filas = []
+                    for r in registros:
+                        ent = r["entry_time"].strftime("%H:%M") if r.get("entry_time") else "–"
+                        sal = r["exit_time"].strftime("%H:%M")  if r.get("exit_time")  else "Abierta"
+                        hs  = f"{r['total_hours']:.2f}"         if r.get("total_hours") else "–"
+                        filas.append({
+                            "Empleado": r["name"],
+                            "Fecha":    r["date"],
+                            "Entrada":  ent,
+                            "Salida":   sal,
+                            "Horas":    hs,
+                        })
+                    st.dataframe(pd.DataFrame(filas), use_container_width=True, hide_index=True)
+                else:
+                    st.caption("Sin registros este mes.")
+
+                if activa:
+                    if st.button(f"🔴 Cerrar obra", key=f"cerrar_{obra['id']}"):
+                        db.close_obra(obra["name"])
+                        st.success(f"Obra cerrada: {obra['name']}")
+                        st.rerun()
+
+        if obras_activas:
+            st.subheader("Obras activas")
+            for obra in obras_activas:
+                _render_obra(obra, activa=True)
 
         if obras_cerradas:
-            st.subheader("Obras cerradas")
-            st.caption(", ".join(o["name"] for o in obras_cerradas))
+            st.subheader("Obras cerradas este mes")
+            for obra in obras_cerradas:
+                _render_obra(obra, activa=False)
 
     st.divider()
     st.subheader("Gestión de obras")
