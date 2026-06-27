@@ -321,20 +321,26 @@ with tab_emp:
         if emp_sel:
             emp_obj = next(e for e in empleados if e["name"] == emp_sel)
             records = db.get_employee_records(emp_obj["telegram_id"], limit=15)
+            es_empleado = emp_obj.get("categoria", "empleado") == "empleado"
             if records:
                 rows_rec = []
                 for r in records:
                     ent = r["entry_time"].strftime("%H:%M") if r.get("entry_time") else "–"
                     sal = r["exit_time"].strftime("%H:%M")  if r.get("exit_time")  else "Sin salida"
+                    rn = re50 = re100 = 0.0
                     if r.get("entry_time") and r.get("exit_time"):
                         d = date.fromisoformat(r["date"])
                         is_h = bool(db.is_holiday(d))
                         rn, re50, re100 = calcular_horas(r["entry_time"], r["exit_time"], d.weekday(), is_h)
-                        hs = f"{rn + re50 + re100:.2f}"
+                    hs = f"{rn + re50 + re100:.2f}" if (rn + re50 + re100) > 0 else "–"
+                    row = {"Fecha": r["date"], "Entrada": ent, "Salida": sal}
+                    if es_empleado:
+                        row["Hs. Normales"] = f"{rn:.2f}" if rn > 0 else "–"
+                        row["Extra 50%"]    = f"{re50:.2f}" if re50 > 0 else "–"
+                        row["Extra 100%"]   = f"{re100:.2f}" if re100 > 0 else "–"
                     else:
-                        hs = "–"
-                    rows_rec.append({"Fecha": r["date"], "Entrada": ent,
-                                     "Salida": sal, "Horas": hs})
+                        row["Horas"] = hs
+                    rows_rec.append(row)
                 st.dataframe(pd.DataFrame(rows_rec), use_container_width=True,
                              hide_index=True)
             else:
