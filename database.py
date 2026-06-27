@@ -340,7 +340,7 @@ class Database:
             entry_time = TIMEZONE.localize(entry_time)
         import math as _m
         raw_hours   = (timestamp - entry_time).total_seconds() / 3600
-        total_hours = float(_m.floor(raw_hours + 0.5))  # redondeo hora entera, corte 0.50
+        total_hours = _m.ceil(raw_hours * 4) / 4  # ceil al cuarto de hora
         self.conn.execute(
             "UPDATE attendance SET exit_time = ?, total_hours = ? WHERE id = ?",
             (timestamp.isoformat(), total_hours, record["id"]),
