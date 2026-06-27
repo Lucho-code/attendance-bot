@@ -63,9 +63,10 @@ def _scheduled_hours(shift: tuple) -> float:
     return (sh * 60 + sm - eh * 60 - em) / 60
 
 
+import math as _math
 def _r15(h: float) -> float:
-    """Redondeo al cuarto de hora mas cercano. Corte en 7.5 min."""
-    return round(h * 4) / 4
+    """Redondeo a la hora entera mas cercana. Corte en 0.50: >=0.50 sube, <0.50 baja."""
+    return float(_math.floor(h + 0.5))
 
 
 GRACE_MINUTES = int(os.getenv("GRACE_MINUTES", "15"))
