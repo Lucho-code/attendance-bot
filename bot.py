@@ -1204,8 +1204,24 @@ async def job_aviso_inicio_jornada(context: CallbackContext):
             pass
 
 
+async def job_aviso_corte_sabado(context: CallbackContext):
+    """13:00 sábados — avisa que es fin de jornada del sábado."""
+    hoy = ahora().date()
+    if hoy.weekday() != 5 or db.is_holiday(hoy):
+        return
+    con_entrada_abierta = db.get_employees_with_open_entry(hoy)
+    for emp in con_entrada_abierta:
+        try:
+            await context.bot.send_message(
+                chat_id=emp["telegram_id"],
+                text="Son las 13:00, fin de la jornada del sábado.\nNo olvidés registrar tu salida.\nEscribí \"me voy\" o \"salgo\".",
+            )
+        except Exception:
+            pass
+
+
 async def job_aviso_corte_jornada(context: CallbackContext):
-    """16:00 — avisa a empleados que es hora de registrar la salida (fin de jornada normal)."""
+    """16:00 lunes a viernes — avisa que es fin de jornada normal."""
     hoy = ahora().date()
     if hoy.weekday() >= 5 or db.is_holiday(hoy):
         return
@@ -1507,7 +1523,8 @@ def main():
         jq.run_daily(job_aviso_entrada, time=dt_time(hour=h, minute=0, tzinfo=TIMEZONE))
     # Aviso de inicio de jornada a las 07:00
     jq.run_daily(job_aviso_inicio_jornada, time=dt_time(hour=7, minute=0, tzinfo=TIMEZONE))
-    # Aviso de corte de jornada normal a las 16:00
+    # Aviso corte jornada: 13:00 sábados, 16:00 lunes-viernes
+    jq.run_daily(job_aviso_corte_sabado,  time=dt_time(hour=13, minute=0, tzinfo=TIMEZONE))
     jq.run_daily(job_aviso_corte_jornada, time=dt_time(hour=16, minute=0, tzinfo=TIMEZONE))
     # Aviso de salida pendiente a las 18:30 (recordatorio tardío)
     jq.run_daily(job_aviso_salida,        time=dt_time(hour=18, minute=30, tzinfo=TIMEZONE))

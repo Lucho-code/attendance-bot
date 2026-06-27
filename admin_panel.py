@@ -535,8 +535,8 @@ with tab_normas:
     st.dataframe(pd.DataFrame([
         {"Día": "Lunes a viernes", "Franja": "07:00 – 16:00",                "Tipo": "Horas normales"},
         {"Día": "Lunes a viernes", "Franja": "Antes 07:00 / Después 16:00",  "Tipo": "Extra 50%"},
-        {"Día": "Sábado",          "Franja": "07:00 – 11:00",                "Tipo": "Extra 50%"},
-        {"Día": "Sábado",          "Franja": "11:00 en adelante",            "Tipo": "Extra 100%"},
+        {"Día": "Sábado",          "Franja": "07:00 – 13:00",                "Tipo": "Extra 50%"},
+        {"Día": "Sábado",          "Franja": "13:00 en adelante",            "Tipo": "Extra 100%"},
         {"Día": "Domingo",         "Franja": "Todo el día",                  "Tipo": "Extra 100%"},
         {"Día": "Feriados",        "Franja": "Todo el día",                  "Tipo": "Extra 100%"},
     ]), use_container_width=True, hide_index=True)

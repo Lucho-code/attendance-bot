@@ -74,8 +74,8 @@ def calcular_horas(entry_dt: datetime, exit_dt: datetime,
     Reglas de horas:
       Lun-Vie 07:00-16:00          → normales
       Lun-Vie fuera de ese rango   → extra 50%
-      Sábado  07:00-11:00          → extra 50%
-      Sábado  11:00+ / antes 07:00 → extra 100%
+      Sábado  07:00-13:00          → extra 50%
+      Sábado  13:00+ / antes 07:00 → extra 100%
       Domingo / Feriado             → extra 100%
 
     Tolerancia (GRACE_MINUTES, default 15 min):
@@ -103,10 +103,10 @@ def calcular_horas(entry_dt: datetime, exit_dt: datetime,
         return (0.0, 0.0, round(total, 2))
 
     # Aplicar tolerancia según el día
-    if weekday == 5:    # Sábado: zona 07:00 y frontera 11:00
+    if weekday == 5:    # Sábado: zona 07:00 y frontera 13:00
         entry = _snap(entry, 7,  0)
-        exit_ = _snap(exit_,  7,  0)   # entrada tarde dentro de gracia → 07:00
-        exit_ = _snap(exit_,  11, 0)   # salida temprana dentro de gracia → 11:00
+        exit_ = _snap(exit_,  7,  0)
+        exit_ = _snap(exit_,  13, 0)   # salida temprana dentro de gracia → 13:00
     else:               # Lun-Vie: zona 07:00-16:00
         entry = _snap(entry, 7,  0)    # entrada tarde ≤ gracia → 07:00
         exit_ = _snap(exit_,  16, 0)   # salida temprana ≤ gracia → 16:00
@@ -122,8 +122,8 @@ def calcular_horas(entry_dt: datetime, exit_dt: datetime,
         return max(0.0, (e - s).total_seconds() / 3600)
 
     if weekday == 5:
-        extra_50  = _overlap(7,  0, 11, 0)
-        extra_100 = _overlap(0,  0,  7, 0) + _overlap(11, 0, 23, 59)
+        extra_50  = _overlap(7,  0, 13, 0)
+        extra_100 = _overlap(0,  0,  7, 0) + _overlap(13, 0, 23, 59)
         return (0.0, round(extra_50, 2), round(extra_100, 2))
 
     normal   = _overlap(7,  0, 16, 0)
