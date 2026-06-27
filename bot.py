@@ -78,6 +78,21 @@ def ahora() -> datetime:
     return datetime.now(TIMEZONE)
 
 
+def _ts_mensaje(update: Update) -> datetime:
+    """Timestamp original del mensaje (cuando el empleado lo mandó, no cuando el bot lo procesa)."""
+    import pytz as _pytz
+    t = update.message.date
+    if t.tzinfo is None:
+        t = _pytz.utc.localize(t)
+    return t.astimezone(TIMEZONE)
+
+
+def _mensaje_muy_viejo(update: Update, horas: int = 12) -> bool:
+    """True si el mensaje tiene más de `horas` horas — evitar procesar mensajes acumulados de días anteriores."""
+    edad = (ahora() - _ts_mensaje(update)).total_seconds()
+    return edad > horas * 3600
+
+
 def es_admin(user_id: int) -> bool:
     return user_id in ADMIN_IDS
 
@@ -179,7 +194,7 @@ async def _hacer_entro(update: Update, context: ContextTypes.DEFAULT_TYPE = None
         )
         return
 
-    ts = ahora()
+    ts = _ts_mensaje(update)
     result = db.register_entry(user.id, ts)
 
     if result == "already_in":
@@ -228,7 +243,7 @@ async def _hacer_salgo(update: Update, context: ContextTypes.DEFAULT_TYPE = None
         )
         return
 
-    ts = ahora()
+    ts = _ts_mensaje(update)
     result = db.register_exit(user.id, ts)
 
     if result is None:
@@ -469,6 +484,8 @@ async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Transcribe el audio del empleado y lo procesa como si fuera texto."""
     user = update.effective_user
 
+    if _mensaje_muy_viejo(update):
+        return
     if await _guardar_nombre(update, context):
         return
     if not db.get_employee(user.id):
@@ -931,6 +948,10 @@ async def cmd_obras(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    # Ignorar mensajes viejos acumulados mientras la PC estaba apagada
+    if _mensaje_muy_viejo(update):
+        return
+
     # Prioridad 1: si estamos esperando el nombre, guardarlo
     if await _guardar_nombre(update, context):
         return
@@ -1479,7 +1500,7 @@ def main():
         jq.run_once(_notificar_restauracion, when=5)
 
     print("Bot iniciado. Esperando mensajes...")
-    app.run_polling(drop_pending_updates=True)
+    app.run_polling(drop_pending_updates=False)
 
 
 if __name__ == "__main__":
