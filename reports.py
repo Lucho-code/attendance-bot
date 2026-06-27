@@ -97,19 +97,17 @@ def calcular_horas(entry_dt: datetime, exit_dt: datetime,
         b = _boundary(h, m)
         return b if abs(dt - b) <= grace else dt
 
-    # Feriado o Domingo: todo al 100%, sin tolerancia de zona
     if is_holiday or weekday == 6:
         total = (exit_ - entry).total_seconds() / 3600
         return (0.0, 0.0, round(total, 2))
 
-    # Aplicar tolerancia según el día
     if weekday == 5:    # Sábado: zona 07:00 y frontera 13:00
         entry = _snap(entry, 7,  0)
         exit_ = _snap(exit_,  7,  0)
-        exit_ = _snap(exit_,  13, 0)   # salida temprana dentro de gracia → 13:00
+        exit_ = _snap(exit_,  13, 0)
     else:               # Lun-Vie: zona 07:00-16:00
-        entry = _snap(entry, 7,  0)    # entrada tarde ≤ gracia → 07:00
-        exit_ = _snap(exit_,  16, 0)   # salida temprana ≤ gracia → 16:00
+        entry = _snap(entry, 7,  0)
+        exit_ = _snap(exit_,  16, 0)
 
     if exit_ <= entry:
         return (0.0, 0.0, 0.0)
@@ -129,11 +127,6 @@ def calcular_horas(entry_dt: datetime, exit_dt: datetime,
     normal   = _overlap(7,  0, 16, 0)
     extra_50 = _overlap(0,  0,  7, 0) + _overlap(16, 0, 23, 59)
     return (round(normal, 2), round(extra_50, 2), 0.0)
-
-
-def build_xlsx(db, records, titulo: str,
-               start_date: date = None, end_date: date = None,
-               holidays: dict = None, absences: dict = None) -> io.BytesIO:
     """
     Genera el XLSX de asistencia con desglose de horas normales,
     extra 50% y extra 100% según convenio.
