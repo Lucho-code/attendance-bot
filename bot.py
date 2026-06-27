@@ -471,12 +471,12 @@ _FFMPEG_PATH   = (
 def _get_whisper():
     global _whisper_model
     if _whisper_model is None:
-        # Asegurar que ffmpeg esté en el PATH para este proceso
-        import sys as _sys
-        if _FFMPEG_PATH not in os.environ.get("PATH", ""):
+        if _FFMPEG_PATH and _FFMPEG_PATH not in os.environ.get("PATH", ""):
             os.environ["PATH"] = _FFMPEG_PATH + os.pathsep + os.environ.get("PATH", "")
         import whisper as _w
-        _whisper_model = _w.load_model("base")
+        # tiny en cloud (256MB RAM), base en local
+        model_name = os.getenv("WHISPER_MODEL", "base")
+        _whisper_model = _w.load_model(model_name)
     return _whisper_model
 
 
