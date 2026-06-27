@@ -211,7 +211,7 @@ def tab_hoy_content():
 
     c1, c2, c3, c4, c5 = st.columns(5)
     c1.metric("Total",            len(empleados))
-    c2.metric("🟢 Entró",         presentes)
+    c2.metric("🟢 Entraron",      presentes)
     c3.metric("🔵 Salieron",      salieron)
     c4.metric("🔴 Sin registrar", ausentes)
     c5.metric("🟡 Sin salida",    sin_salida)
