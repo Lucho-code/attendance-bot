@@ -572,10 +572,10 @@ with tab_normas:
     col1, col2 = st.columns(2)
     with col1:
         st.markdown("**Entrada al galpón** — escribir o audio:")
-        st.code("llegué · entré · entre · presente\narranqué · arranco · inicio · entro")
+        st.code("llegué · llegue · llegamos · ya llegué\npresente · acá estoy · ya estoy · estoy\narranqué · arranco · arrancamos · empecé\nentrada · entro · entré · entre\nbuen día · buenos días · buenas · check in")
     with col2:
         st.markdown("**Salida del galpón** — escribir o audio:")
-        st.code("me voy · salgo · salí · sali\nlisto · terminé · ya está · fin")
+        st.code("me voy · nos vamos · salgo · salí · salimos\nchau · hasta mañana · hasta luego · nos vemos\nterminé · terminamos · listo · ya está\nfin · finalizamos · me retiro · check out")
     st.caption("El bot de Telegram acepta texto y mensajes de voz. Funcionan igual.")
 
     st.divider()
@@ -583,11 +583,11 @@ with tab_normas:
     col1, col2 = st.columns(2)
     with col1:
         st.markdown("**Llegada a la obra** — escribir o audio:")
-        st.code("en obra · inicio obra · entro obra\narranqué obra · llegué obra")
+        st.code("en obra · llegué a la obra · llegué obra\nestoy en obra · arranco obra · arranqué obra\nentro a la obra · empiezo obra\nya llegué a la obra")
         st.caption("El bot muestra los botones de obras activas para seleccionar.")
     with col2:
         st.markdown("**Salida de la obra** — escribir o audio:")
-        st.code("salgo de obra · fin obra\ntermino obra · me voy de obra")
+        st.code("salgo de obra · salgo de la obra\nme voy de obra · fin de obra\nterminé obra · listo en obra\nsaliendo de la obra")
     st.info("El registro de obra es independiente del fichaje del galpón. Un empleado puede hacer ambos el mismo día.")
 
     st.divider()
