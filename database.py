@@ -338,7 +338,8 @@ class Database:
         entry_time = datetime.fromisoformat(record["entry_time"])
         if entry_time.tzinfo is None:
             entry_time = TIMEZONE.localize(entry_time)
-        total_hours = (timestamp - entry_time).total_seconds() / 3600
+        raw_hours   = (timestamp - entry_time).total_seconds() / 3600
+        total_hours = round(raw_hours * 4) / 4  # redondeo a cuarto de hora
         self.conn.execute(
             "UPDATE attendance SET exit_time = ?, total_hours = ? WHERE id = ?",
             (timestamp.isoformat(), total_hours, record["id"]),
