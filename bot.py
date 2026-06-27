@@ -40,34 +40,65 @@ OFFICE_LON        = float(os.getenv("OFFICE_LON", "0") or "0")
 OFFICE_RADIUS_M   = float(os.getenv("OFFICE_RADIUS_METERS", "300") or "300")
 
 PALABRAS_EN_OBRA = [
-    "en obra", "inicio obra", "arranco obra", "entro obra",
-    "llegue obra", "llegué obra", "estoy en obra",
+    # llegada a obra
+    "en obra", "llegue obra", "llegué obra", "llegue a la obra", "llegué a la obra",
+    "estoy en obra", "estoy en la obra",
+    "inicio obra", "inicio la obra", "iniciando obra",
+    "arranco obra", "arranque obra", "arranqué obra",
+    "entro obra", "entre obra", "entré obra", "entro a la obra",
+    "empiezo obra", "empece obra", "empecé obra",
+    "ya estoy en obra", "ya llegue a la obra",
 ]
 PALABRAS_FIN_OBRA = [
-    "salgo de obra", "salgo obra", "fin obra", "termino obra",
-    "terminé obra", "salgo de la obra", "me voy de obra",
+    # salida de obra
+    "salgo de obra", "salgo de la obra", "salgo obra",
+    "me voy de obra", "me voy de la obra",
+    "fin obra", "fin de obra", "fin de la obra",
+    "termino obra", "terminé obra", "termine obra", "terminando obra",
+    "listo en obra", "listo la obra",
+    "saliendo de obra", "saliendo de la obra",
+    "ya termine en obra", "ya terminé en obra",
 ]
 
 PALABRAS_ENTRADA = [
-    "llegué", "llegue",
-    "presente",
-    "arranqué", "arranco", "arrancando",
-    "estoy",
-    "empecé", "empece",
-    "inicio",
+    # llegada / entrada
+    "llegué", "llegue", "ya llegue", "ya llegué",
+    "llegamos",
+    # presencia
+    "presente", "aca estoy", "acá estoy", "ya estoy", "estoy",
+    # arranque / inicio
+    "arranqué", "arranco", "arrancando", "arranque",
+    "empecé", "empece", "empiezo", "empezando",
+    "inicio", "iniciando", "iniciamos",
+    "arrancamos",
+    # entrada directa
+    "entrada", "entro", "entré", "entre", "/entro",
+    # saludos de mañana
+    "buen dia", "buen día", "buenos dias", "buenos días", "buenas",
+    # check in
     "check in", "checkin",
-    "entrada",
-    "/entro", "entro", "entre",
+    # otros
+    "ya llegamos", "aca estamos", "acá estamos",
 ]
 PALABRAS_SALIDA = [
-    "me voy",
-    "salgo", "sali", "salí", "saliendo",
-    "listo",
-    "terminé", "termine",
-    "ya está", "ya esta",
-    "fin",
-    "checkout", "check out",
+    # irse
+    "me voy", "ya me voy", "me fui", "nos vamos",
+    "salgo", "sali", "salí", "saliendo", "salimos",
+    # despedidas
+    "chau", "chao", "adios", "adiós",
+    "hasta mañana", "hasta manana", "hasta luego",
+    "hasta la vista", "nos vemos", "nos vemo",
+    "buenas noches",
+    # terminar
+    "terminé", "termine", "termino", "terminamos", "terminando",
+    "listo", "ya está", "ya esta", "ya listo",
+    "fin", "finalizamos", "finalice", "finalicé",
+    # salida directa
+    "salida", "salgo ya", "me retiro", "me retiro ya",
+    "check out", "checkout",
     "/salgo",
+    # otros
+    "ya nos vamos", "ya salimos",
 ]
 
 AWAITING_NAME = "awaiting_name"
