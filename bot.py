@@ -29,6 +29,7 @@ load_dotenv()
 
 TOKEN = os.getenv("TELEGRAM_TOKEN")
 ADMIN_IDS = [int(x) for x in os.getenv("ADMIN_IDS", "").split(",") if x.strip()]
+COMPANY_NAME = os.getenv("COMPANY_NAME", "la empresa")
 TIMEZONE = pytz.timezone("America/Argentina/Buenos_Aires")
 
 db = Database()
@@ -159,7 +160,7 @@ async def _guardar_nombre(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     db.register_employee(update.effective_user.id, name)
     context.user_data[AWAITING_NAME] = False
     await update.message.reply_text(
-        f"*¡Bienvenido/a, {name}!* Ya estás registrado en 2H Movimiento de Suelos.\n"
+        f"*¡Bienvenido/a, {name}!* Ya estás registrado en {COMPANY_NAME}.\n"
         f"\n"
         f"*Podés escribir o mandar un audio de voz — funcionan igual.*\n"
         f"\n"

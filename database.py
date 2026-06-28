@@ -56,6 +56,7 @@ ABSENCE_LABELS = {
 
 class Database:
     def __init__(self):
+        os.makedirs(os.path.dirname(DB_PATH) or ".", exist_ok=True)
         self.conn = sqlite3.connect(DB_PATH, check_same_thread=False, timeout=30)
         self.conn.row_factory = sqlite3.Row
         self._init_tables()
