@@ -75,8 +75,8 @@ A partir de ese momento, el bot reconoce al empleado por su cuenta de Telegram (
 |----------------|------|
 | Lun–Vie 07:00–16:00 | Horas normales |
 | Lun–Vie antes de 07:00 o después de 16:00 | Horas extra 50% |
-| Sábado 07:00–11:00 | Horas extra 50% |
-| Sábado 11:00 en adelante | Horas extra 100% |
+| Sábado 07:00–13:00 | Horas extra 50% |
+| Sábado 13:00 en adelante | Horas extra 100% |
 | Domingo | Horas extra 100% |
 | Feriados nacionales | Horas extra 100% |
 
