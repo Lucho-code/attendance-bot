@@ -3,6 +3,8 @@ import io
 import math
 import shutil
 import calendar
+import logging
+import logging.handlers
 from datetime import datetime, date, timedelta, time as dt_time
 from itertools import groupby
 
@@ -26,6 +28,15 @@ from reports  import (
 )
 
 load_dotenv()
+
+# --- Logging ---
+_log_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "fichajes.log")
+_handler = logging.handlers.RotatingFileHandler(
+    _log_path, maxBytes=2_000_000, backupCount=3, encoding="utf-8"
+)
+_handler.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(message)s", datefmt="%Y-%m-%d %H:%M:%S"))
+logging.basicConfig(level=logging.INFO, handlers=[_handler, logging.StreamHandler()])
+logger = logging.getLogger(__name__)
 
 TOKEN = os.getenv("TELEGRAM_TOKEN")
 ADMIN_IDS = [int(x) for x in os.getenv("ADMIN_IDS", "").split(",") if x.strip()]
@@ -240,6 +251,7 @@ async def _hacer_entro(update: Update, context: ContextTypes.DEFAULT_TYPE = None
 
     n_sesion = int(result.split("_")[1])
     sesion_txt = "" if n_sesion == 1 else f" (sesión {n_sesion})"
+    logger.info("ENTRADA uid=%s nombre=%r hora=%s sesion=%d", user.id, employee['name'], ts.strftime("%Y-%m-%d %H:%M:%S"), n_sesion)
     await update.message.reply_text(
         f"*Entrada registrada{sesion_txt}*\n"
         f"Nombre: {employee['name']}\n"
@@ -323,6 +335,7 @@ async def _hacer_salgo(update: Update, context: ContextTypes.DEFAULT_TYPE = None
     if session_count > 1:
         msg += f"\nTotal acumulado hoy: *{daily_total:.2f} hs* ({session_count} sesiones)"
 
+    logger.info("SALIDA uid=%s nombre=%r hora=%s norm=%.2f e50=%.2f e100=%.2f", user.id, employee['name'], ts.strftime("%Y-%m-%d %H:%M:%S"), norm, e50, e100)
     await update.message.reply_text(msg.strip(), parse_mode="Markdown")
 
     # Verificar límites mensuales de horas extra (solo empleados)
@@ -980,8 +993,14 @@ async def cmd_obras(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user = update.effective_user
+    ts = _ts_mensaje(update)
+    logger.info("MSG uid=%s text=%r ts=%s", user.id, update.message.text, ts.strftime("%Y-%m-%d %H:%M:%S"))
+
     # Ignorar mensajes viejos acumulados mientras la PC estaba apagada
     if _mensaje_muy_viejo(update):
+        edad_h = (ahora() - ts).total_seconds() / 3600
+        logger.warning("IGNORADO (viejo %.1fh) uid=%s text=%r", edad_h, user.id, update.message.text)
         return
 
     # Prioridad 1: si estamos esperando el nombre, guardarlo
@@ -1483,12 +1502,22 @@ def main():
     if not ADMIN_IDS:
         print("ADVERTENCIA: ADMIN_IDS no configurado. Nadie podrá descargar reportes.")
 
+    async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
+        from telegram.error import NetworkError, TimedOut
+        err = context.error
+        if isinstance(err, (NetworkError, TimedOut)):
+            logger.warning("RED: %s", err)
+        else:
+            logger.error("ERROR inesperado: %s", err, exc_info=err)
+
     app = (Application.builder()
            .token(TOKEN)
            .read_timeout(120)
            .write_timeout(120)
            .connect_timeout(30)
            .build())
+
+    app.add_error_handler(error_handler)
 
     app.add_handler(CommandHandler("start",        cmd_start))
     app.add_handler(CommandHandler("ayuda",        cmd_ayuda))
