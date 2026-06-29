@@ -271,22 +271,6 @@ async def _hacer_salgo(update: Update, context: ContextTypes.DEFAULT_TYPE = None
         else:
             await update.message.reply_text("Primero registrate enviando /start")
         return
-    emp_cat2 = db.get_employee(user.id).get("categoria", "empleado") if db.get_employee(user.id) else "empleado"
-    necesita_ubicacion2 = (REQUIRE_LOCATION and emp_cat2 == "empleado" and
-                           bool(OFFICE_LAT and OFFICE_LON) and not ubicacion_verificada)
-    if necesita_ubicacion2:
-        await update.message.reply_text(
-            "Para registrar la salida necesito verificar tu ubicación.\n"
-            "\n"
-            "Cómo compartirla:\n"
-            "1. Tocá el ícono del clip 📎 (abajo a la izquierda)\n"
-            "2. Seleccioná Ubicación\n"
-            "3. Tocá Enviar mi ubicación actual\n"
-            "\n"
-            "El sistema verifica que estés en el lugar de trabajo y registra la salida automáticamente."
-        )
-        return
-
     ts = _ts_mensaje(update)
     result = db.register_exit(user.id, ts)
 
